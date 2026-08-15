@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="images/datagrab_hex.png" width="350" alt="hex sticker">
+</p>
+  
+  
 # cds-datagrab
 
 `cds-datagrab` is a reproducible R-package workflow for retrieving environmental data from the Copernicus Climate Data Store (CDS), aligning source data to the protected study-area template, writing daily GeoTIFFs, and aggregating complete ISO weeks.
