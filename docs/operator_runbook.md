@@ -57,6 +57,19 @@ find "$ROOT/data/production/<product>/weekly" -name '*.tif' | wc -l
 
 Inspect the latest `run_manifest.json` and require `pipeline_status: success`, final validation success, and zero daily/weekly failures. Keep successful raw files and outputs when retrying a failed month. A rerun reuses valid artifacts.
 
+ERA5-Land `--process` is restartable. A complete monthly request is validated and
+fast-forwarded without reading NetCDF members; within an incomplete request, complete
+products are fast-forwarded and only missing/invalid products are processed. Existing
+valid daily TIFFs and their request-specific sidecars are reused and are not overwritten
+unless `--overwrite` is explicitly supplied. The two historical ERA5-Land process/full
+Slurm wrappers allocate 72 hours; staging and retrieval remain separate operations.
+
+For sidecars produced before request-scoped annotation, run
+`scripts/repair_era5land_daily_sidecar_provenance.R` first without `--apply` to audit
+the proposed repair. Apply mode updates only whitelisted provenance fields atomically,
+never writes TIFFs, and records an audit CSV. Do not rerun stage/retrieve solely because
+local processing is being restarted.
+
 ## Safe rerun
 
 1. Confirm the source and installed commits match.

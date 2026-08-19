@@ -3,7 +3,7 @@
 #SBATCH -N 1
 #SBATCH -n 1
 #SBATCH --cpus-per-task=4
-#SBATCH --time=12:00:00
+#SBATCH --time=72:00:00
 #SBATCH --mem=32G
 set -euo pipefail
 REPO_DIR="${REPO_DIR:-${SLURM_SUBMIT_DIR}}"; source "$REPO_DIR/hpc/lib/cds_datagrab_env.sh"; cds_datagrab_load_atlas_modules

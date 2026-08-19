@@ -49,6 +49,27 @@ daily raster processing, and weekly aggregation. It never contacts CDS. `--execu
 is a resumable convenience mode that stages, performs one non-blocking retrieval
 pass, and processes only when all source requests are locally available.
 
+Processing is restartable at both monthly-request and product level. Before reading
+an archive, `--process` validates every expected daily TIFF, sidecar, template/range
+check, and request hash for the configured products. A complete month is fast-forwarded;
+for a partial month, complete products are reused and only incomplete products read
+their extracted member. Existing valid TIFFs are reused and are never overwritten
+unless `--overwrite` is supplied. Daily sidecars carry the source-family request hash,
+monthly dates, archive path, member, and alias for the request that generated them.
+
+Sidecars written by older versions can be audited and repaired without rebuilding
+rasters:
+
+```bash
+Rscript scripts/repair_era5land_daily_sidecar_provenance.R --config "$CONFIG" --output-root "$CDS_DATAGRAB_ROOT"
+Rscript scripts/repair_era5land_daily_sidecar_provenance.R --config "$CONFIG" --output-root "$CDS_DATAGRAB_ROOT" --apply
+```
+
+The repair utility defaults to dry-run, updates only whitelisted provenance fields,
+and writes an audit CSV in apply mode. Historical process jobs use a 72-hour wall-time;
+staging and retrieval remain separate and should not be rerun merely because local
+processing is restarted.
+
 For the production output root, the operational commands are:
 
 ```bash

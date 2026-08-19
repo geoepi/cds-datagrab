@@ -3,8 +3,15 @@ canonical_iso_dates <- function(x, field = "date") {
   if (is.null(x) || length(x) == 0L) return(character())
   while (is.list(x) && length(x) == 1L) x <- x[[1L]]
   if (is.list(x)) x <- unlist(x, recursive = TRUE, use.names = FALSE)
-  if (inherits(x, "Date")) return(unname(format(x, "%Y-%m-%d")))
-  if (inherits(x, c("POSIXct", "POSIXlt"))) return(unname(format(as.Date(x, tz = "UTC"), "%Y-%m-%d")))
+  if (inherits(x, "Date")) {
+    if (anyNA(x)) stop(field, " contains missing or invalid dates", call. = FALSE)
+    return(unname(format(x, "%Y-%m-%d")))
+  }
+  if (inherits(x, c("POSIXct", "POSIXlt"))) {
+    parsed <- as.Date(x, tz = "UTC")
+    if (anyNA(parsed)) stop(field, " contains missing or invalid dates", call. = FALSE)
+    return(unname(format(parsed, "%Y-%m-%d")))
+  }
   if (is.factor(x)) x <- as.character(x)
   if (!is.character(x)) stop(field, " must contain Date values or ISO YYYY-MM-DD strings; received class: ", paste(class(x), collapse = "/"), call. = FALSE)
   parsed <- as.Date(x, format = "%Y-%m-%d")

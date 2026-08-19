@@ -6,19 +6,19 @@ era5land_expected_dates <- function(config, start_date = NULL, end_date = NULL, 
 }
 
 era5land_request_for_date <- function(requests, date) {
-  date <- as.Date(date)
-  if (length(date) != 1L || is.na(date)) stop("Debug date must be a valid scalar date", call. = FALSE)
-  matches <- vapply(requests, function(x) date %in% as.Date(x$raw_request_dates), logical(1))
-  if (sum(matches) != 1L) stop("Expected exactly one configured family request containing debug date ", format(date), "; found ", sum(matches), call. = FALSE)
+  date <- normalize_date_vector(date, "date")
+  if (length(date) != 1L) stop("Debug date must be a valid scalar date", call. = FALSE)
+  matches <- vapply(requests, function(x) date %in% canonical_iso_dates(x$raw_request_dates, "raw_request_dates"), logical(1))
+  if (sum(matches) != 1L) stop("Expected exactly one configured family request containing debug date ", date, "; found ", sum(matches), call. = FALSE)
   requests[[which(matches)]]
 }
 
 era5land_validate_debug_date <- function(date, family_dates) {
-  date <- as.Date(date)
-  family_dates <- as.Date(family_dates)
-  if (length(date) != 1L || is.na(date)) stop("Debug date must be a valid scalar date", call. = FALSE)
-  if (!(date %in% family_dates)) stop("Debug date ", format(date), " is outside the configured ERA5-Land request period", call. = FALSE)
-  invisible(date)
+  date <- normalize_date_vector(date, "date")
+  family_dates <- canonical_iso_dates(family_dates, "family_dates")
+  if (length(date) != 1L) stop("Debug date must be a valid scalar date", call. = FALSE)
+  if (!(date %in% family_dates)) stop("Debug date ", date, " is outside the configured ERA5-Land request period", call. = FALSE)
+  invisible(normalize_date_vector(date, "date"))
 }
 
 era5land_family_manifest <- function(run_dir, root, source_paths, request, cfg, products, status = "running", execution_mode = NULL, workflow_mode = NULL, overwrite = FALSE, rebuild_all_weeks = FALSE) {
@@ -41,18 +41,159 @@ era5land_family_manifest <- function(run_dir, root, source_paths, request, cfg, 
   m
 }
 
-era5land_annotate_product_metadata <- function(directory, spec, request, member = NULL) {
-  files <- if (dir.exists(directory)) list.files(directory, pattern = "[.]json$", full.names = TRUE) else character()
-  for (f in files) {
-    x <- tryCatch(jsonlite::read_json(f, simplifyVector = FALSE), error = function(e) NULL)
-    if (is.null(x)) next
-    x$source_family_id <- request$source_family_id; x$daily_time_zone <- request$time_zone
-    x$daily_sampling_frequency <- request$frequency; x$daily_statistic <- request$daily_statistic
-    x$metadata_notes <- spec$metadata_notes %||% NULL
-    if (!is.null(member)) { x$source_member <- member$member_name; x$source_alias <- member$environmental_variable_alias; x$source_archive_path <- member$archive_path; x$source_map_rows <- 3L }
-    jsonlite::write_json(x, f, pretty = TRUE, auto_unbox = TRUE, null = "null")
+era5land_processing_failure_is_undated <- function(x) {
+  value <- tryCatch(x$date, error = function(e) NULL)
+  is.null(value) || !length(value) || anyNA(value) || !nzchar(as.character(value[[1L]]))
+}
+
+era5land_product_date_outcomes <- function(expected_dates, process_result) {
+  expected_iso <- canonical_iso_dates(expected_dates, "expected_dates")
+  expected <- normalize_date_vector(expected_iso, "expected_dates")
+  expected_iso <- unname(format(expected, "%Y-%m-%d"))
+  date_results <- if (is.null(process_result)) list() else process_result$date_results %||% list()
+  date_results <- unname(date_results)
+  result_iso <- character(length(date_results))
+  for (i in seq_along(date_results)) {
+    result <- date_results[[i]]
+    if (!is.list(result) || is.null(result$date) || length(result$date) != 1L) {
+      stop("process_result$date_results[[", i, "]] must contain exactly one date", call. = FALSE)
+    }
+    result_iso[[i]] <- canonical_iso_dates(result$date, paste0("process_result$date_results[[", i, "]]$date"))
   }
-  invisible(files)
+  if (anyDuplicated(result_iso)) {
+    stop("process_result$date_results contains duplicate dates: ", paste(unique(result_iso[duplicated(result_iso) | duplicated(result_iso, fromLast = TRUE)]), collapse = ", "), call. = FALSE)
+  }
+  unexpected <- setdiff(result_iso, expected_iso)
+  if (length(unexpected)) stop("process_result$date_results contains unexpected date(s): ", paste(unexpected, collapse = ", "), call. = FALSE)
+  names(result_iso) <- result_iso
+  undated_failure <- length(process_result$processing_failures %||% list()) > 0L && any(vapply(process_result$processing_failures, era5land_processing_failure_is_undated, logical(1)))
+  status_by_date <- setNames(vapply(date_results, function(x) as.character(x$status %||% "failed"), character(1)), result_iso)
+  successful <- expected_iso[!undated_failure & expected_iso %in% names(status_by_date) & status_by_date[expected_iso] %in% c("success", "reused")]
+  missing <- setdiff(expected_iso, result_iso)
+  failed <- setdiff(expected_iso, successful)
+  list(expected_dates = expected_iso, successful_dates = unname(successful), failed_dates = unname(failed),
+    missing_date_results = unname(missing), unexpected_date_results = unname(unexpected), date_results = date_results,
+    undated_processing_failure = undated_failure)
+}
+
+era5land_annotation_fields <- function(x, spec, request, member = NULL) {
+  request_dates <- normalize_date_vector(request$raw_request_dates, "raw_request_dates")
+  x$source_family_id <- request$source_family_id %||% "era5land_daily_mean_utc06"
+  x$daily_time_zone <- request$time_zone
+  x$daily_sampling_frequency <- request$frequency
+  x$daily_statistic <- request$daily_statistic
+  x$metadata_notes <- spec$metadata_notes %||% NULL
+  x$request_hash <- request$request_hash %||% NULL
+  x$request_start <- as.character(request$request_start %||% min(request_dates))
+  x$request_end <- as.character(request$request_end %||% max(request_dates))
+  if (!is.null(member)) {
+    x$source_member <- as.character(member$member_name %||% member$member_name[[1L]] %||% NA_character_)[[1L]]
+    x$source_alias <- as.character(member$environmental_variable_alias %||% member$source_alias %||% NA_character_)[[1L]]
+    x$source_archive_path <- as.character(member$archive_path %||% member$source_archive_path %||% NA_character_)[[1L]]
+    x$source_map_rows <- as.integer(member$source_map_rows %||% 0L)
+  }
+  x
+}
+
+era5land_atomic_write_json <- function(value, path) {
+  fs::dir_create(dirname(path), recurse = TRUE)
+  tmp <- tempfile(paste0(".", basename(path), ".tmp-"), tmpdir = dirname(path), fileext = ".json")
+  backup <- NULL
+  on.exit({
+    if (file.exists(tmp)) unlink(tmp, force = TRUE)
+    if (!is.null(backup) && file.exists(backup) && !file.exists(path)) file.rename(backup, path)
+  }, add = TRUE)
+  jsonlite::write_json(value, tmp, pretty = TRUE, auto_unbox = TRUE, null = "null")
+  check <- tryCatch(jsonlite::read_json(tmp, simplifyVector = FALSE), error = function(e) e)
+  if (inherits(check, "error")) stop("Temporary JSON failed validation: ", conditionMessage(check), call. = FALSE)
+  if (file.exists(path)) {
+    backup <- tempfile(paste0(".", basename(path), ".previous-"), tmpdir = dirname(path), fileext = ".json")
+    if (!file.rename(path, backup)) stop("Could not stage existing JSON sidecar: ", path, call. = FALSE)
+  }
+  if (!file.rename(tmp, path)) stop("Could not atomically promote JSON sidecar: ", path, call. = FALSE)
+  if (!is.null(backup) && file.exists(backup)) unlink(backup, force = TRUE)
+  invisible(path)
+}
+
+era5land_annotate_product_metadata <- function(output_paths, spec, request, member = NULL) {
+  paths <- unique(as.character(output_paths %||% character()))
+  if (length(paths) && any(dir.exists(paths))) stop("ERA5-Land metadata annotation requires explicit TIFF output paths, not a directory", call. = FALSE)
+  changed <- character()
+  for (output_path in paths) {
+    if (!file.exists(output_path)) stop("Cannot annotate missing TIFF output: ", output_path, call. = FALSE)
+    sidecar <- paste0(output_path, ".json")
+    if (!file.exists(sidecar)) stop("Cannot annotate missing daily sidecar: ", sidecar, call. = FALSE)
+    old <- jsonlite::read_json(sidecar, simplifyVector = FALSE)
+    updated <- era5land_annotation_fields(old, spec, request, member)
+    if (!identical(old, updated)) {
+      era5land_atomic_write_json(updated, sidecar)
+      changed <- c(changed, sidecar)
+    }
+  }
+  invisible(changed)
+}
+
+era5land_repair_product_sidecar <- function(sidecar, spec, request, member, apply = FALSE) {
+  if (!file.exists(sidecar)) return(list(status = "missing_sidecar", message = "sidecar does not exist", before = NA_character_, after = NA_character_))
+  old <- tryCatch(jsonlite::read_json(sidecar, simplifyVector = FALSE), error = function(e) e)
+  if (inherits(old, "error")) return(list(status = "failed", message = conditionMessage(old), before = NA_character_, after = NA_character_))
+  updated <- tryCatch(era5land_annotation_fields(old, spec, request, member), error = function(e) e)
+  if (inherits(updated, "error")) return(list(status = "failed", message = conditionMessage(updated), before = digest::digest(file = sidecar, algo = "sha256"), after = NA_character_))
+  before <- digest::digest(file = sidecar, algo = "sha256")
+  if (identical(old, updated)) return(list(status = "already_correct", message = "whitelisted provenance already matches request", before = before, after = before))
+  if (!isTRUE(apply)) return(list(status = "needs_repair", message = "whitelisted provenance differs from request", before = before, after = NA_character_))
+  era5land_atomic_write_json(updated, sidecar)
+  list(status = "repaired", message = "whitelisted provenance replaced atomically", before = before, after = digest::digest(file = sidecar, algo = "sha256"))
+}
+
+era5land_progress <- function(...) {
+  cat(paste0(..., "\n"))
+  flush.console()
+  invisible(NULL)
+}
+
+era5land_product_output_completeness <- function(product_id, request, config, root, require_provenance = TRUE) {
+  spec <- get_variable_spec(product_id)
+  pcfg <- config
+  pcfg$project$dataset_id <- product_id
+  pcfg$cds$variable <- spec$cds_variable
+  pcfg$cds$daily_statistic <- spec$daily_statistic
+  paths <- resolve_storage_paths(pcfg, attr(config, "project_root") %||% getwd(), root, create = FALSE)
+  expected <- canonical_iso_dates(request$raw_request_dates, "request$raw_request_dates")
+  expected_dates <- normalize_date_vector(expected, "request$raw_request_dates")
+  template <- tryCatch(terra::rast(config$spatial$template_path), error = function(e) NULL)
+  if (is.null(template)) return(list(valid = FALSE, product_id = product_id, output_paths = character(), missing = expected, invalid = character(), reason = "template_unreadable"))
+  output_paths <- file.path(paths$daily_dir, vapply(expected_dates, function(d) daily_output_filename(spec, d), character(1)))
+  missing <- expected[!file.exists(output_paths)]
+  invalid <- character()
+  provenance_invalid <- character()
+  if (!length(missing)) for (i in seq_along(output_paths)) {
+    output_path <- output_paths[[i]]; sidecar <- paste0(output_path, ".json")
+    check <- tryCatch(validate_daily_output(output_path, expected_dates[[i]], template, pcfg, variable_spec = spec), error = function(e) list(valid = FALSE, message = conditionMessage(e)))
+    if (!isTRUE(check$valid)) invalid <- c(invalid, expected[[i]])
+    if (!file.exists(sidecar)) {
+      provenance_invalid <- c(provenance_invalid, expected[[i]])
+    } else if (isTRUE(require_provenance)) {
+      metadata <- tryCatch(jsonlite::read_json(sidecar, simplifyVector = TRUE), error = function(e) NULL)
+      if (is.null(metadata) || !identical(as.character(metadata$source_family_id %||% ""), as.character(request$source_family_id %||% "era5land_daily_mean_utc06")) || !identical(as.character(metadata$request_hash %||% ""), as.character(request$request_hash))) provenance_invalid <- c(provenance_invalid, expected[[i]])
+    }
+  }
+  valid <- !length(missing) && !length(invalid) && !length(provenance_invalid)
+  list(valid = valid, product_id = product_id, output_paths = output_paths, missing = unique(missing), invalid = unique(invalid), provenance_invalid = unique(provenance_invalid), reason = if (valid) "complete" else paste(c(if (length(missing)) "missing_outputs", if (length(invalid)) "invalid_outputs", if (length(provenance_invalid)) "missing_or_incorrect_provenance"), collapse = ";"), paths = paths)
+}
+
+era5land_request_output_completeness <- function(request, product_ids, config, root) {
+  checks <- lapply(product_ids, era5land_product_output_completeness, request = request, config = config, root = root)
+  list(valid = length(checks) > 0L && all(vapply(checks, function(x) isTRUE(x$valid), logical(1))), products = checks,
+    missing_products = vapply(checks[!vapply(checks, function(x) isTRUE(x$valid), logical(1))], function(x) x$product_id, character(1)))
+}
+
+era5land_reused_product_result <- function(product_id, request, output_paths) {
+  expected <- canonical_iso_dates(request$raw_request_dates, "request$raw_request_dates")
+  date_results <- lapply(seq_along(expected), function(i) list(date = expected[[i]], status = "reused", output_path = output_paths[[i]]))
+  list(product_id = product_id, status = "success", source_member = NULL, source_alias = NULL, requested_dates = expected,
+    successful_dates = expected, failed_dates = character(), daily_outputs_written = 0L, daily_outputs_reused = length(expected),
+    daily_outputs_replaced = 0L, date_results = date_results, coverage_metrics_source = "existing_output_metadata", fast_forwarded = TRUE)
 }
 
 era5land_member_date_map <- function(member, request, member_request) {
@@ -81,16 +222,26 @@ era5land_condition_record <- function(e, stage = "process") {
 }
 
 era5land_product_result <- function(product_id, expected_dates, process = NULL, status = "failed", failure = NULL, source_member = NULL, source_alias = NULL) {
+  expected_iso <- canonical_iso_dates(expected_dates, "expected_dates")
   dates <- if (!is.null(process)) process$date_results %||% list() else list()
-  if (!length(dates)) dates <- lapply(as.character(expected_dates), function(d) list(date = d, status = if (status == "success") "success" else "failed", output_path = NULL,
+  if (!length(dates)) dates <- lapply(expected_iso, function(d) list(date = d, status = if (status == "success") "success" else "failed", output_path = NULL,
     pre_repair_missing_cells = NA_integer_, pre_repair_missing_supported_cells = NA_integer_, structurally_unsupported_cells = NA_integer_, component_count = NA_integer_, repaired_cells = NA_integer_, post_repair_missing_cells = NA_integer_, post_repair_unexpected_missing_cells = NA_integer_, outside_mask_cells = NA_integer_, outside_support_finite_cells = NA_integer_,
     failure_stage = if (status == "success") NULL else failure$failure_stage %||% "process", failure_message = if (status == "success") NULL else failure$failure_message %||% "not_available"))
   dates <- unname(dates)
-  successful <- vapply(dates, function(x) identical(x$status, "success") || identical(x$status, "reused"), logical(1))
+  normalized <- lapply(seq_along(dates), function(i) {
+    x <- dates[[i]]
+    x$date <- canonical_iso_dates(x$date, paste0("process_result$date_results[[", i, "]]$date"))
+    x
+  })
+  dates <- normalized
+  outcomes <- era5land_product_date_outcomes(expected_iso, list(date_results = dates, processing_failures = process$processing_failures %||% list()))
+  successful <- vapply(dates, function(x) as.character(x$status %||% "failed") %in% c("success", "reused"), logical(1))
+  successful <- vapply(dates, function(x) as.character(x$date) %in% outcomes$successful_dates, logical(1))
   failed <- !successful
+  result_status <- if (identical(status, "success") && length(outcomes$failed_dates)) "failed" else status
   failure <- failure %||% list()
-  list(product_id = product_id, status = status, source_member = source_member, source_alias = source_alias, requested_dates = as.character(expected_dates),
-    successful_dates = as.character(vapply(dates[successful], `[[`, character(1), "date")), failed_dates = as.character(vapply(dates[failed], `[[`, character(1), "date")),
+  list(product_id = product_id, status = result_status, source_member = source_member, source_alias = source_alias, requested_dates = expected_iso,
+    successful_dates = outcomes$successful_dates, failed_dates = outcomes$failed_dates, missing_date_results = outcomes$missing_date_results,
     daily_outputs_written = if (is.null(process)) 0L else length(process$written), daily_outputs_reused = if (is.null(process)) 0L else length(process$reused),
     pre_repair_missing_cells = if (is.null(process)) NA_real_ else era5land_sum_available(vapply(dates, function(x) x$pre_repair_missing_cells %||% NA_real_, numeric(1))),
     repaired_cells = if (is.null(process)) NA_real_ else era5land_sum_available(vapply(dates, function(x) x$repaired_cells %||% NA_real_, numeric(1))),
@@ -103,9 +254,9 @@ era5land_product_result <- function(product_id, expected_dates, process = NULL, 
     repaired_supported_cells = if (is.null(process)) NA_real_ else process$coverage_summary$repaired_supported_cells %||% NA_real_,
     post_repair_unexpected_missing_cells = if (is.null(process)) NA_real_ else process$coverage_summary$post_repair_unexpected_missing_cells %||% NA_real_,
     outside_support_finite_cells = if (is.null(process)) NA_real_ else process$coverage_summary$outside_support_finite_cells %||% NA_real_,
-    failure_stage = if (status == "success") NULL else failure$failure_stage %||% "process", failure_message = if (status == "success") NULL else failure$failure_message %||% "not_available",
-    condition_class = if (status == "success") NULL else failure$condition_class %||% NULL, condition_call = if (status == "success") NULL else failure$condition_call %||% NULL,
-    traceback = if (status == "success") NULL else failure$traceback %||% NULL, date_results = dates)
+    failure_stage = if (result_status == "success") NULL else failure$failure_stage %||% "process", failure_message = if (result_status == "success") NULL else failure$failure_message %||% "not_available",
+    condition_class = if (result_status == "success") NULL else failure$condition_class %||% NULL, condition_call = if (result_status == "success") NULL else failure$condition_call %||% NULL,
+    traceback = if (result_status == "success") NULL else failure$traceback %||% NULL, date_results = dates, date_outcomes = outcomes)
 }
 
 era5land_collect_product_execution <- function(results, failures, product_id, product_execution) {
@@ -144,6 +295,7 @@ era5land_family_status <- function(results, failures, collection_errors = list()
 }
 
 era5land_safe_failure_result <- function(product_id, expected_dates, process, original, source_member = NULL, source_alias = NULL) {
+  expected_iso <- canonical_iso_dates(expected_dates, "expected_dates")
   tryCatch(
     era5land_product_result(product_id, expected_dates, process, "failed", original, source_member, source_alias),
     error = function(e) {
@@ -153,9 +305,9 @@ era5land_safe_failure_result <- function(product_id, expected_dates, process, or
         status = "failed",
         source_member = source_member,
         source_alias = source_alias,
-        requested_dates = as.character(expected_dates),
+        requested_dates = expected_iso,
         successful_dates = character(),
-        failed_dates = as.character(expected_dates),
+        failed_dates = expected_iso,
         failure_stage = original$failure_stage %||% "process",
         failure_message = original$failure_message %||% "not_available",
         original_condition = original,
@@ -166,11 +318,12 @@ era5land_safe_failure_result <- function(product_id, expected_dates, process, or
 }
 
 run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_mean_utc06_smoke.yml", mode = c("plan", "download", "stage-requests", "retrieve-requests", "process", "aggregate", "execute", "full"), dry_run = TRUE,
-                                           start_date = NULL, end_date = NULL, output_root = NULL, product_ids = .era5land_product_ids(), overwrite = FALSE, rebuild_all_weeks = FALSE, transfer_fun = NULL, stage_fun = NULL, status_fun = NULL, request_override = NULL, internal_call = FALSE) {
+                                           start_date = NULL, end_date = NULL, output_root = NULL, product_ids = .era5land_product_ids(), overwrite = FALSE, rebuild_all_weeks = FALSE, transfer_fun = NULL, stage_fun = NULL, status_fun = NULL, request_override = NULL, internal_call = FALSE, request_index = NULL, request_total = NULL) {
   mode <- match.arg(mode); cfg <- read_pipeline_config(config_path); attr(cfg, "config_path") <- normalizePath(config_path, winslash = "/", mustWork = FALSE); root <- resolve_project_root(dirname(config_path)); attr(cfg, "project_root") <- root; cfg <- resolve_config_paths(cfg, root, output_root, FALSE); cfg <- validate_pipeline_config(cfg); attr(cfg, "config_path") <- normalizePath(config_path, winslash = "/", mustWork = FALSE); attr(cfg, "project_root") <- root
   if (!identical(unname(as.character(cfg$project$source_family_id)), "era5land_daily_mean_utc06")) stop("Configuration is not an ERA5-Land daily-mean source-family configuration", call. = FALSE)
   if (!all(product_ids %in% .era5land_product_ids())) stop("Unknown ERA5-Land product selector", call. = FALSE)
-  expected <- if (!is.null(request_override)) as.Date(request_override$raw_request_dates) else era5land_expected_dates(cfg, start_date, end_date, dry_run)
+  expected <- if (!is.null(request_override)) normalize_date_vector(request_override$raw_request_dates, "request_override$raw_request_dates") else era5land_expected_dates(cfg, start_date, end_date, dry_run)
+  request_started <- Sys.time()
   source_paths <- resolve_source_storage_paths(cfg, root, output_root, create = TRUE)
   run_id <- paste0(format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"), "_", substr(digest::digest(list(cfg, mode, expected, product_ids), algo = "xxhash32"), 1, 8))
   run_dir <- file.path(source_paths$runs_root, run_id); fs::dir_create(run_dir, recurse = TRUE)
@@ -216,12 +369,28 @@ run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_
   }
 
   if (mode %in% c("process", "aggregate") && !internal_call && length(requests) > 1L) {
-    results <- lapply(requests, function(request) run_era5land_daily_mean_family(config_path = config_path, mode = mode, dry_run = FALSE, output_root = output_root, product_ids = product_ids, overwrite = overwrite, rebuild_all_weeks = rebuild_all_weeks, transfer_fun = transfer_fun, stage_fun = stage_fun, status_fun = status_fun, request_override = request, internal_call = TRUE))
+    results <- lapply(seq_along(requests), function(i) run_era5land_daily_mean_family(config_path = config_path, mode = mode, dry_run = FALSE, output_root = output_root, product_ids = product_ids, overwrite = overwrite, rebuild_all_weeks = rebuild_all_weeks, transfer_fun = transfer_fun, stage_fun = stage_fun, status_fun = status_fun, request_override = requests[[i]], internal_call = TRUE, request_index = i, request_total = length(requests)))
     statuses <- vapply(results, function(x) as.character(x$status %||% "failed"), character(1))
     status <- if (all(statuses == "success")) "success" else if (all(statuses %in% c("success", "planned"))) "partial_success" else "failed"
     return(list(status = status, family_status = status, run_id = run_id, run_dir = run_dir, requests = requests, request_registry = registry, request_inventory = registry_inventory, request_results = results, source_paths = source_paths, products = product_ids))
   }
 
+  request_label <- if (!is.null(req)) paste0(req$request_start, " to ", req$request_end) else "unknown request"
+  if (mode == "process" && !isTRUE(overwrite) && !is.null(req)) {
+    completeness <- era5land_request_output_completeness(req, product_ids, cfg, source_paths$root)
+    if (isTRUE(completeness$valid)) {
+      era5land_progress("[ERA5-Land] request ", request_index %||% 1L, "/", request_total %||% 1L, " ", substr(req$request_start, 1L, 7L), " complete-month fast-forward")
+      reused_products <- lapply(completeness$products, function(x) era5land_reused_product_result(x$product_id, req, x$output_paths))
+      names(reused_products) <- product_ids
+      manifest$status <- "success"; manifest$family_status <- "success"; manifest$successful_products <- product_ids; manifest$failed_products <- character()
+      manifest$successful_product_dates <- unlist(lapply(reused_products, function(x) as.vector(outer(x$product_id, x$successful_dates, paste, sep = "__"))), use.names = FALSE)
+      manifest$product_results <- reused_products; manifest$daily_outputs_reused <- sum(vapply(reused_products, function(x) x$daily_outputs_reused, integer(1)))
+      manifest$completed_at <- format(Sys.time(), tz = "UTC", usetz = TRUE); jsonlite::write_json(manifest, file.path(run_dir, "run_manifest.json"), pretty = TRUE, auto_unbox = TRUE, null = "null")
+      era5land_progress("[ERA5-Land] request ", request_index %||% 1L, "/", request_total %||% 1L, " ", substr(req$request_start, 1L, 7L), " complete elapsed=0s written=0 reused=", manifest$daily_outputs_reused)
+      return(list(status = "success", family_status = "success", run_id = run_id, run_dir = run_dir, requests = requests, download = data.frame(), products = reused_products, failures = list(), source_paths = source_paths, manifest = manifest, complete_month_fast_forward = TRUE))
+    }
+  }
+  era5land_progress("[ERA5-Land] request ", request_index %||% 1L, "/", request_total %||% 1L, " ", substr(req$request_start, 1L, 7L), " start")
   download_result <- if (mode %in% c("download", "full")) tryCatch(download_cds_requests(requests, paths = source_paths, run_dir = run_dir, dry_run = FALSE, overwrite = overwrite, config = cfg, run_id = run_id, transfer_fun = transfer_fun), error = function(e) fail_family("download", conditionMessage(e))) else data.frame()
   if (mode == "download") return(list(status = "downloaded", run_id = run_id, run_dir = run_dir, requests = requests, download = download_result, source_paths = source_paths, products = product_ids))
   raw_path <- if (nrow(download_result) && "final_raw_path" %in% names(download_result)) download_result$final_raw_path[[1L]] else NULL
@@ -251,10 +420,22 @@ run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_
     })
   }
   for (id in product_ids) {
-    spec <- get_variable_spec(id); member <- era5land_member_for_product(inventory, id); member_request <- req; member_request$target <- basename(member$extracted_path)
+    spec <- get_variable_spec(id)
+    product_check <- if (!isTRUE(overwrite)) era5land_product_output_completeness(id, req, cfg, source_paths$root) else list(valid = FALSE)
+    if (isTRUE(product_check$valid)) {
+      era5land_progress("[ERA5-Land] request ", request_index %||% 1L, "/", request_total %||% 1L, " ", substr(req$request_start, 1L, 7L), " product ", id, " reused_complete")
+      results[[id]] <- c(era5land_reused_product_result(id, req, product_check$output_paths), list(request_hash = req$request_hash, process = NULL))
+      next
+    }
+    era5land_progress("[ERA5-Land] request ", request_index %||% 1L, "/", request_total %||% 1L, " ", substr(req$request_start, 1L, 7L), " product ", id, " processing")
+    product_started <- Sys.time()
+    member <- era5land_member_for_product(inventory, id); member_request <- req; member_request$target <- basename(member$extracted_path)
     member_map <- era5land_member_date_map(member, req, member_request)
     pcfg <- cfg; pcfg$project$dataset_id <- id; pcfg$cds$variable <- spec$cds_variable; pcfg$cds$daily_statistic <- spec$daily_statistic
     pcfg$paths <- list(root = source_paths$root); pcfg <- resolve_config_paths(pcfg, root, source_paths$root, FALSE)
+    pcfg$era5land_lineage <- list(source_family_id = req$source_family_id, request_hash = req$request_hash, request_start = req$request_start, request_end = req$request_end,
+      source_member = member$member_name[[1L]], source_alias = member$environmental_variable_alias[[1L]], source_archive_path = member$archive_path[[1L]], source_map_rows = nrow(member_map),
+      daily_time_zone = req$time_zone, daily_sampling_frequency = req$frequency)
     p <- resolve_storage_paths(pcfg, root, source_paths$root, create = TRUE); product_run <- file.path(p$runs_root, run_id); fs::dir_create(product_run, recurse = TRUE)
     lineage <- list(run_id = run_id, product_id = id, source_family_id = req$source_family_id, source_run_directory = run_dir, shared_raw_path = raw_path,
       shared_extracted_directory = dirname(member$extracted_path), source_member = member$member_name, source_alias = member$environmental_variable_alias,
@@ -289,15 +470,16 @@ run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_
       lineage$repaired_cells <- pr$coverage_summary$repaired_cells %||% 0L
       lineage$post_repair_missing_cells <- pr$coverage_summary$post_repair_missing_cells %||% 0L
       lineage$outside_mask_cells <- pr$coverage_summary$outside_mask_cells %||% 0L
-      failed_dates <- expected[vapply(expected, function(d) any(grepl(format(as.Date(d), "%Y-%m-%d"), pr$failed, fixed = TRUE)), logical(1))]
-      if (length(pr$processing_failures) && any(vapply(pr$processing_failures, function(x) is.na(x$date) || !nzchar(x$date), logical(1)))) failed_dates <- expected
-      lineage$failed_dates <- as.character(failed_dates); lineage$successful_dates <- as.character(setdiff(expected, failed_dates))
-      if (length(pr$failed) || length(pr$processing_failures) || length(lineage$successful_dates) != length(expected)) {
+      outcomes <- era5land_product_date_outcomes(expected, pr)
+      lineage$failed_dates <- outcomes$failed_dates; lineage$successful_dates <- outcomes$successful_dates
+      if (length(pr$failed) || length(pr$processing_failures) || length(outcomes$failed_dates) || length(outcomes$missing_date_results)) {
         if (!length(lineage$failed_dates)) lineage$failed_dates <- as.character(expected)
         stop("Product/date processing incomplete for ", id, call. = FALSE)
       }
-      era5land_annotate_product_metadata(p$daily_dir, spec, req, member); product_result <- era5land_product_result(id, expected, pr, "success", source_member = member$member_name, source_alias = member$environmental_variable_alias); wr <- c(product_result, list(request_hash = req$request_hash, process = pr))
-      if (mode %in% c("aggregate", "full")) { inv <- inventory_daily_products(p$daily_dir, spec$daily_filename_prefix, cfg$spatial$template_path, TRUE, pcfg); wr$weekly <- aggregate_daily_to_weekly(p$daily_dir, p$weekly_dir, spec$weekly_filename_prefix, template_path = cfg$spatial$template_path, rebuild_all = rebuild_all_weeks, inventory = inv, variable_spec = spec, config = pcfg); era5land_annotate_product_metadata(p$weekly_dir, spec, req, member) }
+      output_paths <- unique(c(pr$written, pr$reused, pr$replaced))
+      era5land_annotate_product_metadata(output_paths, spec, req, list(member_name = member$member_name[[1L]], environmental_variable_alias = member$environmental_variable_alias[[1L]], archive_path = member$archive_path[[1L]], source_map_rows = nrow(member_map)))
+      product_result <- era5land_product_result(id, expected, pr, "success", source_member = member$member_name, source_alias = member$environmental_variable_alias); wr <- c(product_result, list(request_hash = req$request_hash, process = pr))
+      if (mode %in% c("aggregate", "full")) { inv <- inventory_daily_products(p$daily_dir, spec$daily_filename_prefix, cfg$spatial$template_path, TRUE, pcfg); wr$weekly <- aggregate_daily_to_weekly(p$daily_dir, p$weekly_dir, spec$weekly_filename_prefix, template_path = cfg$spatial$template_path, rebuild_all = rebuild_all_weeks, inventory = inv, variable_spec = spec, config = pcfg) }
       lineage$coverage_metrics_source <- if (length(pr$written) || length(pr$replaced)) "recomputed" else if (length(pr$reused)) "existing_output_metadata" else "not_recomputed"
       wr$coverage_metrics_source <- lineage$coverage_metrics_source
       lineage <- modifyList(lineage, product_result); lineage$status <- "success"; lineage$process <- pr
@@ -308,11 +490,13 @@ run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_
         lineage$status <- "failed"; lineage$failure_stage <- internal$failure_stage; lineage$failure_message <- internal$failure_message
         list(result = c(product_result, list(request_hash = req$request_hash, process = pr, coverage_metrics_source = lineage$coverage_metrics_source)), failure = product_result, lineage = lineage)
       } else {
+        era5land_progress("[ERA5-Land] request ", request_index %||% 1L, "/", request_total %||% 1L, " ", substr(req$request_start, 1L, 7L), " product ", id, " success written=", length(pr$written), " reused=", length(pr$reused), " elapsed=", round(as.numeric(difftime(Sys.time(), product_started, units = "secs")), 1), "s")
         list(result = wr, failure = NULL, lineage = lineage)
       }
     }, error = function(e) {
       original <- if (!is.null(pr) && length(pr$processing_failures)) pr$processing_failures[[1L]] else era5land_condition_record(e, "process")
       if (!is.null(pr) && length(pr$processing_failures)) { original$failure_stage <- original$stage %||% original$processing_step %||% "process"; original$failure_message <- original$condition_message %||% original$error_message; original$condition_class <- original$condition_class %||% original$error_class; original$condition_call <- original$condition_call %||% NULL; original$traceback <- original$traceback %||% NULL }
+      era5land_progress("[ERA5-Land] request ", request_index %||% 1L, "/", request_total %||% 1L, " ", substr(req$request_start, 1L, 7L), " product ", id, " failed: ", original$failure_message %||% conditionMessage(e))
       product_result <- era5land_safe_failure_result(id, expected, pr, original, source_member = member$member_name, source_alias = member$environmental_variable_alias)
       lineage$coverage_metrics_source <- "not_recomputed"
       product_result$coverage_metrics_source <- lineage$coverage_metrics_source
@@ -356,5 +540,6 @@ run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_
   manifest$post_repair_missing_cells <- era5land_sum_available(vapply(results, function(x) x$post_repair_missing_cells %||% NA_real_, numeric(1)))
   manifest$outside_mask_cells <- era5land_sum_available(vapply(results, function(x) x$outside_mask_cells %||% NA_real_, numeric(1)))
   jsonlite::write_json(manifest, file.path(run_dir, "run_manifest.json"), pretty = TRUE, auto_unbox = TRUE, null = "null")
+  era5land_progress("[ERA5-Land] request ", request_index %||% 1L, "/", request_total %||% 1L, " ", substr(req$request_start, 1L, 7L), " complete elapsed=", round(as.numeric(difftime(Sys.time(), request_started, units = "secs")), 1), "s written=", manifest$daily_outputs_written %||% 0, " reused=", manifest$daily_outputs_reused %||% 0, " skipped=", sum(vapply(results, function(x) isTRUE(x$fast_forwarded), logical(1))))
   list(status = status, family_status = status, run_id = run_id, run_dir = run_dir, requests = requests, download = download_result, products = results, failures = failures, source_paths = source_paths, manifest = manifest, source_diagnostic = shared_source_diagnostic)
 }
