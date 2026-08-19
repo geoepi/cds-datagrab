@@ -47,7 +47,9 @@ process_downloaded_variable <- function(raw_files,daily_dir,template_path,bbox_p
   append_coverage_record <- function(record) { coverage_state$records <- c(coverage_state$records, list(record)); invisible(record) }
   spec <- variable_spec %||% get_variable_spec(config$project$dataset_id,config)
   lineage <- config$era5land_lineage %||% list()
+  expected_dates <- normalize_date_vector(expected_dates, "expected_dates")
   run_expected_dates <- normalize_date_vector(run_expected_dates %||% expected_dates,"run_expected_dates")
+  overwrite_dates <- if (is.null(overwrite_dates)) NULL else normalize_date_vector(overwrite_dates, "overwrite_dates")
   agera5_member_dates <- setNames(as.Date(character()),character()); agera5_member_hashes <- setNames(character(),character())
   if(identical(spec$id,"agera5_relhum_min")&&length(raw_files)) {
     raw_formats <- vapply(raw_files,detect_download_format,character(1))
@@ -57,7 +59,7 @@ process_downloaded_variable <- function(raw_files,daily_dir,template_path,bbox_p
       md0 <- extract_agera5_archive(f,file.path(dirname(f),"..","extracted"),rh,spec)
       requested0 <- if(!is.null(date_source_map)) selected_dates_for_raw(f,date_source_map) else if(!is.null(req0)) build_request_dates(req0) else run_expected_dates
       chosen0 <- select_agera5_archive_members(md0,requested0)
-      for(j in seq_len(nrow(chosen0))) { p0 <- chosen0$extracted_path[[j]]; agera5_member_dates[[p0]] <- as.Date(chosen0$date_from_filename[[j]]); agera5_member_hashes[[p0]] <- rh }
+      for(j in seq_len(nrow(chosen0))) { p0 <- chosen0$extracted_path[[j]]; agera5_member_dates[[p0]] <- normalize_date_vector(chosen0$date_from_filename[[j]], "AgERA5 member date"); agera5_member_hashes[[p0]] <- rh }
     }
     raw_files <- unique(c(raw_files[raw_formats!="zip"],names(agera5_member_dates)))
     if(length(agera5_member_dates)) date_source_map <- NULL
@@ -67,18 +69,25 @@ process_downloaded_variable <- function(raw_files,daily_dir,template_path,bbox_p
   boundary <- if(isTRUE(config$spatial$mask_to_boundary)) sf::st_read(bbox_path,quiet=TRUE) else NULL
   written <- reused <- replaced <- failed <- character(); readers <- list(); processing_failures <- list(); date_results <- list()
   record_date_result <- function(date_result) {
-    if (!is.list(date_result) || !length(date_result$date) || is.na(date_result$date[[1L]])) {
+    if (!is.list(date_result) || !length(date_result$date)) {
       stop("A date result must contain a non-missing date", call. = FALSE)
     }
-    key <- format(as.Date(date_result$date[[1L]]), "%Y-%m-%d")
+    key <- canonical_iso_dates(date_result$date[[1L]], "date_result$date")
+    if (length(key) != 1L) stop("A date result must contain exactly one date", call. = FALSE)
+    key <- key[[1L]]
+    duplicate_date_fields <- which(names(date_result) == "date")
+    if (length(duplicate_date_fields) > 1L) date_result <- date_result[-duplicate_date_fields[-1L]]
+    date_result$date <- key
     current <- date_results
     current[[key]] <- date_result
     date_results <<- current
     invisible(date_result)
   }
   date_result_from_coverage <- function(date, status, output_path, coverage_result = NULL, failure_stage = NULL, failure_message = NULL) {
+    date <- canonical_iso_dates(date, "date result date")
+    if (length(date) != 1L) stop("A date result must contain exactly one date", call. = FALSE)
     list(
-      date = as.character(date), status = status, output_path = output_path,
+      date = date[[1L]], status = status, output_path = output_path,
       pre_repair_missing_cells = if (is.null(coverage_result)) NA_integer_ else coverage_result$missing_inside_pre_repair_count,
       pre_repair_missing_supported_cells = if (is.null(coverage_result)) NA_integer_ else coverage_result$missing_inside_pre_repair_supported_count,
       structurally_unsupported_cells = if (is.null(coverage_result)) NA_integer_ else coverage_result$structurally_unsupported_cells,
@@ -97,13 +106,55 @@ process_downloaded_variable <- function(raw_files,daily_dir,template_path,bbox_p
     list(condition_class = class(e), condition_message = conditionMessage(e), condition_call = if (is.null(call)) NULL else paste(deparse(call), collapse = " "),
       traceback = substr(paste(vapply(sys.calls(), function(x) paste(deparse(x), collapse = " "), character(1)), collapse = " <- "), 1L, 8000L))
   }
-  add_failure <- function(raw_path,date=NA,step,e,metadata=list(),coverage_failure_message=NULL) {
-    key_date <- if(is.na(date)) NA_character_ else format(as.Date(date),"%Y-%m-%d")
-    error_details <- condition_details(e); if (!isTRUE(nzchar(error_details$condition_message %||% "")) && isTRUE(nzchar(coverage_failure_message %||% ""))) error_details$condition_message <- coverage_failure_message
-    z <- c(list(raw_path=raw_path,date=key_date,product_id=spec$id,variable_id=spec$id,stage=step,processing_step=step,selected_netcdf_variable=metadata$selected_variable %||% spec$netcdf_variable_names[[1]],source_units=metadata$source_units_original %||% metadata$source_units %||% spec$source_units,source_member=metadata$source_member %||% NULL,source_alias=metadata$source_alias %||% NULL,candidate_output_path=if(is.na(date)) NULL else file.path(daily_dir,daily_output_filename(spec,date)),diagnostic_directory=if(is.null(run_dir)) NULL else file.path(run_dir,"diagnostics","coverage"),warnings=metadata$warnings %||% character(),coverage_diagnostics=metadata$coverage_diagnostics %||% NULL), error_details)
+  is_undated_failure <- function(date) {
+    while (is.list(date) && length(date) == 1L) date <- date[[1L]]
+    if (is.null(date)) return(TRUE)
+    if (length(date) != 1L) return(FALSE)
+    if (inherits(date, c("Date", "POSIXct", "POSIXlt")) || is.atomic(date)) return(isTRUE(is.na(date)[[1L]]))
+    FALSE
+  }
+  add_failure <- function(raw_path,date=NULL,step,e=NULL,metadata=list(),coverage_failure_message=NULL,error_details=NULL) {
+    undated <- is_undated_failure(date)
+    key_date <- if (undated) NA_character_ else canonical_iso_dates(date, "processing failure date")
+    if (!undated && length(key_date) != 1L) stop("A processing failure must contain exactly one date", call. = FALSE)
+    normalized_date <- if (undated) NULL else normalize_date_vector(key_date, "processing failure date")
+    candidate_output_path <- if (undated) NULL else file.path(daily_dir,daily_output_filename(spec,normalized_date))
+    error_details <- error_details %||% condition_details(e); if (!isTRUE(nzchar(error_details$condition_message %||% "")) && isTRUE(nzchar(coverage_failure_message %||% ""))) error_details$condition_message <- coverage_failure_message
+    z <- c(list(raw_path=raw_path,date=if(undated) NA_character_ else key_date[[1L]],product_id=spec$id,variable_id=spec$id,stage=step,processing_step=step,selected_netcdf_variable=metadata$selected_variable %||% spec$netcdf_variable_names[[1]],source_units=metadata$source_units_original %||% metadata$source_units %||% spec$source_units,source_member=metadata$source_member %||% NULL,source_alias=metadata$source_alias %||% NULL,candidate_output_path=candidate_output_path,diagnostic_directory=if(is.null(run_dir)) NULL else file.path(run_dir,"diagnostics","coverage"),warnings=metadata$warnings %||% character(),coverage_diagnostics=metadata$coverage_diagnostics %||% NULL), error_details)
     processing_failures[[length(processing_failures)+1L]] <<- z
     if(identical(spec$id,"agera5_relhum_min")) agera5_diagnostics[[length(agera5_diagnostics)+1L]] <<- c(list(member_path=raw_path,terra_readable=FALSE,expected_date=z$date),z)
-    failed <<- c(failed,if(is.na(date)) raw_path else file.path(daily_dir,daily_output_filename(spec,date)))
+    failed <<- c(failed,if(undated) raw_path else candidate_output_path)
+    invisible(z)
+  }
+  record_netcdf_read_failure <- function(raw_path, failure_dates, e) {
+    original_error <- condition_details(e)
+    failure_index <- length(processing_failures) + 1L
+    z <- tryCatch(
+      add_failure(raw_path, NULL, "netcdf_read", error_details = original_error),
+      error = function(bookkeeping_error) {
+        diagnostic_error <- tryCatch(condition_details(bookkeeping_error), error = function(details_error) list(condition_class = class(bookkeeping_error), condition_message = conditionMessage(bookkeeping_error), condition_call = NULL, traceback = NULL))
+        fallback <- c(list(raw_path=raw_path,date=NA_character_,product_id=spec$id,variable_id=spec$id,stage="netcdf_read",processing_step="netcdf_read",candidate_output_path=NULL,diagnostic_recording_error=diagnostic_error),original_error)
+        processing_failures[[failure_index]] <<- fallback
+        failed <<- c(failed,raw_path)
+        fallback
+      }
+    )
+    diagnostic_errors <- list()
+    for (failure_index_date in seq_along(failure_dates)) {
+      failed_date <- failure_dates[[failure_index_date]]
+      tryCatch({
+        failed_date <- normalize_date_vector(failed_date, "failed processing date")
+        output_path <- file.path(daily_dir,daily_output_filename(spec,failed_date))
+        record_date_result(c(date_result_from_coverage(failed_date,"failed",output_path,failure_stage="netcdf_read",failure_message=original_error$condition_message),z))
+      }, error = function(bookkeeping_error) {
+        diagnostic_errors[[length(diagnostic_errors)+1L]] <<- tryCatch(condition_details(bookkeeping_error), error = function(details_error) list(condition_class = class(bookkeeping_error), condition_message = conditionMessage(bookkeeping_error), condition_call = NULL, traceback = NULL))
+      })
+    }
+    if (length(diagnostic_errors)) {
+      if (is.null(z$diagnostic_recording_error)) z$diagnostic_recording_error <- diagnostic_errors[[1L]]
+      if (length(diagnostic_errors) > 1L) z$diagnostic_recording_error$additional_errors <- diagnostic_errors[-1L]
+      processing_failures[[failure_index]] <<- z
+    }
     invisible(z)
   }
   coverage_failure_message_for <- function(coverage_result) {
@@ -117,17 +168,18 @@ process_downloaded_variable <- function(raw_files,daily_dir,template_path,bbox_p
   }
   for(f in raw_files) {
     req <- if(!is.null(request_manifest)) tryCatch(request_entry_for_raw(f,request_manifest),error=function(e)NULL) else NULL
-    raw_request_dates <- if(!is.null(req)) build_request_dates(req) else if(identical(spec$id,"agera5_relhum_min")&&!is.null(agera5_member_dates[[f]])) agera5_member_dates[[f]] else run_expected_dates
-    dates_to_process <- if(!is.null(date_source_map)) selected_dates_for_raw(f,date_source_map) else raw_request_dates
+    raw_request_dates <- normalize_date_vector(if(!is.null(req)) build_request_dates(req) else if(identical(spec$id,"agera5_relhum_min")&&!is.null(agera5_member_dates[[f]])) agera5_member_dates[[f]] else run_expected_dates, "raw_request_dates")
+    dates_to_process <- normalize_date_vector(if(!is.null(date_source_map)) selected_dates_for_raw(f,date_source_map) else raw_request_dates, "dates_to_process")
     if(!length(dates_to_process)) next
-     x <- tryCatch(read_era5_daily_layers(f,variable_spec=spec,raw_request_dates=raw_request_dates,dates_to_process=dates_to_process,request_hash=if(!is.null(req)) req$request_hash else if(f %in% names(agera5_member_hashes)) agera5_member_hashes[[f]] else NULL),error=function(e){ z <- add_failure(f,NA,"netcdf_read",e); for (failed_date in dates_to_process) record_date_result(c(date_result_from_coverage(failed_date,"failed",file.path(daily_dir,daily_output_filename(spec,failed_date)),failure_stage="netcdf_read",failure_message=z$condition_message),z)); NULL})
+     x <- tryCatch(read_era5_daily_layers(f,variable_spec=spec,raw_request_dates=raw_request_dates,dates_to_process=dates_to_process,request_hash=if(!is.null(req)) req$request_hash else if(f %in% names(agera5_member_hashes)) agera5_member_hashes[[f]] else NULL),error=function(e){ record_netcdf_read_failure(f,dates_to_process,e); NULL})
     if(is.null(x)) next
+    x$dates <- normalize_date_vector(x$dates, "reader dates")
     readers[[f]] <- list(reader_used=x$reader_used,source_format=x$source_format,selected_variable=x$selected_variable %||% NA,selected_netcdf_variable=x$selected_netcdf_variable %||% x$selected_variable %||% NA,selected_variable_alias=x$selected_variable_alias %||% NA,data_variable_dimensions=x$data_variable_dimensions %||% x$dimension_names %||% character(),source_units=x$source_units %||% NA,source_units_original=x$source_units_original %||% x$source_units %||% NA,source_units_normalized=x$source_units_normalized %||% NA,output_units=x$output_units %||% spec$output_units,unit_conversion=x$unit_conversion %||% spec$unit_conversion,source_value_minimum=x$source_value_minimum %||% NA_real_,source_value_maximum=x$source_value_maximum %||% NA_real_,raw_request_dates=raw_request_dates,raw_request_hash=if(!is.null(req)) req$request_hash else if(f %in% names(agera5_member_hashes)) agera5_member_hashes[[f]] else NA_character_,raw_checksum=if(file.exists(f)) digest::digest(file=f,algo="sha256") else NA_character_,dates_to_process=dates_to_process,dates=x$dates,dimension_names=x$dimension_names %||% character(),dimension_lengths=x$dimension_lengths %||% numeric(),dimension_order=x$dimension_order %||% character(),decoded_dates=x$decoded_dates %||% x$dates,latitude_direction=x$latitude_direction %||% NA,longitude_direction=x$longitude_direction %||% NA,longitude_convention=x$longitude_convention %||% NA,time_coordinate_name=x$time_coordinate_name %||% NA,time_coordinate_units=x$time_coordinate_units %||% NA,time_coordinate_raw_values=x$time_coordinate_raw_values %||% numeric(),time_coordinate_calendar_effective=x$time_coordinate_calendar_effective %||% "standard",daily_statistic_source=x$daily_statistic_source %||% "cds_daily_statistics",daily_statistic=x$daily_statistic %||% spec$daily_statistic,subdaily_frequency=x$subdaily_frequency %||% spec$frequency)
     if(identical(spec$id,"agera5_relhum_min")) { agera5_update_member_manifest(f,x); agera5_diagnostics[[length(agera5_diagnostics)+1L]] <- list(member_path=f,terra_readable=identical(x$reader_selected,"terra_gdal"),n_layers=if(!is.null(x$rasters)) length(x$rasters) else NA_integer_,names=x$terra_names%||%character(),varnames=x$terra_varnames%||%character(),units=x$source_units%||%NA_character_,time=x$terra_time%||%character(),crs=x$source_crs%||%character(),resolution=x$source_resolution%||%numeric(),extent=x$source_extent%||%numeric(),source_minimum=x$source_minimum%||%NA_real_,source_maximum=x$source_maximum%||%NA_real_,expected_date=as.character(dates_to_process),decoded_date=as.character(x$dates),selected_variable=x$selected_source_variable%||%x$selected_variable%||%NA_character_,reader_selected=x$reader_selected%||%x$reader_used%||%NA_character_,reader_attempted=x$reader_attempted%||%NA_character_,reader_diagnostics=x$reader_diagnostics%||%list()) }
     for(i in seq_along(x$dates)) {
       d <- x$dates[i]; out <- file.path(daily_dir,daily_output_filename(spec,d)); existed_before <- file.exists(out); valid_before <- FALSE
        if(existed_before) { vr0 <- validate_daily_output(out,d,template,config,variable_spec=spec); valid_before <- isTRUE(vr0$valid); if(valid_before&&is.null(overwrite_dates)) { if(!out%in%reused) reused <- c(reused,out); record_date_result(date_result_from_coverage(d,"reused",out)); next } }
-      if(!is.null(overwrite_dates)&&!(d%in%as.Date(overwrite_dates))) next
+      if(!is.null(overwrite_dates)&&!(d%in%overwrite_dates)) next
       coverage_result <- NULL; tmp_path <- NULL; coverage_recorded <- FALSE; coverage_failure_message <- NULL
       tryCatch({
         bilinear <- terra::project(x$rasters[[i]],template,method=config$processing$resampling_method)
