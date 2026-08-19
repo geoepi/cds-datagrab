@@ -1,5 +1,17 @@
 #!/usr/bin/env Rscript
 
+era5land_repair_tif_selection <- function(tif_path, prefix, selected_start, selected_end) {
+  parsed <- parse_grid_filename(tif_path, prefix)
+  if (!isTRUE(parsed$valid) || !identical(parsed$timestep, "daily")) {
+    return(list(examine = TRUE, valid = FALSE, date = as.Date(NA), date_iso = NA_character_))
+  }
+  date <- normalize_date_vector(parsed$date, "daily TIFF date")
+  start <- normalize_date_vector(selected_start, "selected repair start")
+  end <- normalize_date_vector(selected_end, "selected repair end")
+  if (length(date) != 1L || length(start) != 1L || length(end) != 1L || start > end) stop("Repair TIFF selection requires scalar dates and an increasing interval", call. = FALSE)
+  list(examine = isTRUE(date >= start && date <= end), valid = TRUE, date = date, date_iso = canonical_iso_dates(date, "daily TIFF date")[[1L]])
+}
+
 usage <- function() {
   cat("Usage: Rscript scripts/repair_era5land_daily_sidecar_provenance.R --config PATH --output-root PATH [--apply] [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD]\n")
   quit(status = 2L)
@@ -32,13 +44,11 @@ cfg <- resolve_config_paths(cfg, project_root, output_root, FALSE)
 cfg <- validate_pipeline_config(cfg)
 if (!identical(as.character(cfg$project$source_family_id), "era5land_daily_mean_utc06")) stop("Configuration is not an ERA5-Land daily-mean source-family configuration", call. = FALSE)
 
-family_dates <- era5land_expected_dates(cfg, dry_run = FALSE)
-if (!is.null(start_text) || !is.null(end_text)) {
-  selected_start <- normalize_date_vector(start_text %||% min(family_dates), "start_date")
-  selected_end <- normalize_date_vector(end_text %||% max(family_dates), "end_date")
-  if (length(selected_start) != 1L || length(selected_end) != 1L || selected_start > selected_end) stop("Repair date range must be a valid increasing date interval", call. = FALSE)
-  family_dates <- family_dates[family_dates >= selected_start & family_dates <= selected_end]
-}
+configured_family_dates <- era5land_expected_dates(cfg, dry_run = FALSE)
+selected_start <- normalize_date_vector(start_text %||% min(configured_family_dates), "start_date")
+selected_end <- normalize_date_vector(end_text %||% max(configured_family_dates), "end_date")
+if (length(selected_start) != 1L || length(selected_end) != 1L || selected_start > selected_end) stop("Repair date range must be a valid increasing date interval", call. = FALSE)
+family_dates <- configured_family_dates[configured_family_dates >= selected_start & configured_family_dates <= selected_end]
 domain <- diagnose_spatial_domain(cfg$spatial$template_path, cfg$spatial$bbox_path, cfg)
 requests <- build_era5land_daily_mean_requests(family_dates, domain$final_cds_area, cfg, era5land_family_product_ids())
 source_paths <- resolve_source_storage_paths(cfg, project_root, output_root, create = FALSE)
@@ -67,13 +77,14 @@ for (product_id in era5land_family_product_ids()) {
   files <- list.files(paths$daily_dir, pattern = paste0("^", gsub("([][{}()+*^$|\\\\?.])", "\\\\1", spec$daily_filename_prefix), "_.*[.]tiff?$"), full.names = TRUE)
   inventory_cache <- new.env(parent = emptyenv())
   for (tif_path in files) {
-    parsed <- parse_grid_filename(tif_path, spec$daily_filename_prefix)
+    selection <- era5land_repair_tif_selection(tif_path, spec$daily_filename_prefix, selected_start, selected_end)
+    if (!isTRUE(selection$examine)) next
     sidecar_path <- paste0(tif_path, ".json")
-    if (!isTRUE(parsed$valid) || parsed$timestep != "daily") {
+    if (!isTRUE(selection$valid)) {
       add_audit(product_id, NA_character_, tif_path, sidecar_path, list(), list(), NA_character_, NA_character_, "failed", "daily TIFF filename/date could not be parsed")
       next
     }
-    date <- canonical_iso_dates(parsed$date, "daily TIFF date")[[1L]]
+    date <- selection$date_iso
     matches <- vapply(requests, function(request) date %in% canonical_iso_dates(request$raw_request_dates, "request dates"), logical(1))
     if (sum(matches) != 1L) {
       add_audit(product_id, date, tif_path, sidecar_path, list(), list(), NA_character_, NA_character_, "ambiguous", paste0("date mapped to ", sum(matches), " monthly requests"))
