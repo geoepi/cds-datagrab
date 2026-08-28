@@ -177,6 +177,10 @@ era5land_aggregate_daily_inventory <- function(inventory, expected_dates) {
   inventory
 }
 
+era5land_product_week_failure_ids <- function(product_id, missing_weeks) {
+  if (length(missing_weeks)) paste0(product_id, "__", missing_weeks) else character()
+}
+
 era5land_aggregate_daily_mean_family <- function(config_path, cfg, expected, requests, source_paths, manifest,
                                                  run_dir, product_ids, output_root, overwrite = FALSE,
                                                  rebuild_all_weeks = FALSE) {
@@ -207,7 +211,7 @@ era5land_aggregate_daily_mean_family <- function(config_path, cfg, expected, req
         complete_weeks = character(), incomplete_weeks = data.frame(), failed = character(), failure_message = conditionMessage(e))
     )
     missing_weeks <- setdiff(complete_week_ids, aggregation$complete_weeks %||% character())
-    product_week_failures <- paste0(id, "__", missing_weeks)
+    product_week_failures <- era5land_product_week_failure_ids(id, missing_weeks)
     failed_product_weeks <- c(failed_product_weeks, product_week_failures)
     product_status <- if (length(missing_weeks) || identical(aggregation$status, "failed")) "failed" else "success"
     product_result <- list(product_id = id, status = product_status, requested_dates = as.character(expected),

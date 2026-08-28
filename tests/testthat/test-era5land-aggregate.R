@@ -102,3 +102,8 @@ test_that("weekly assessment with an explicit date window preserves ISO weeks ac
   expect_true(assessment$complete)
   expect_equal(length(assessment$expected_dates[[1L]]), 7L)
 })
+
+test_that("aggregate failure accounting does not create dangling product-week IDs", {
+  expect_identical(cdsdatagrab:::era5land_product_week_failure_ids("era5land_tmean", character()), character())
+  expect_identical(cdsdatagrab:::era5land_product_week_failure_ids("era5land_tmean", "2022-W05"), "era5land_tmean__2022-W05")
+})
