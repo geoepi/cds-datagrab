@@ -51,7 +51,7 @@ Daily filenames are `<prefix>_YYYY-MM-DD.tif`; weekly filenames are `<prefix>_YY
 
 Coverage fields include master-template cells, ERA5-Land-supported cells, structural exclusions, pre-repair missing supported cells, repaired supported cells, unexpected post-repair missing cells, outside-support finite cells, component records, and final checksum/reopen results. Coverage validation writes masks named `missing_inside`, `outside_mask`, `structural_support_exclusion`, and `unexpected_post_repair_missing`; component details are written to `repair_components_<product>_<date>.csv` when enabled.
 
-Weekly sidecars record the ISO week, variable/spec hash, selected daily dates and paths, selected daily checksums, template checksum, aggregation algorithm version, input fingerprint, output checksum, and reuse-defining input fingerprint. Weekly outputs require seven valid daily inputs and preserve structural support exclusions.
+Weekly sidecars record the ISO week, variable/spec hash, selected daily dates and paths, selected daily checksums, template checksum, aggregation algorithm version, input fingerprint, output checksum, and reuse-defining input fingerprint. ERA5-Land weekly sidecars additionally record the seven daily request hashes, the unique source request hashes (including multiple monthly requests when applicable), and the source family ID. Weekly outputs require seven valid daily inputs and preserve structural support exclusions.
 
 ## Source-bound numerical tolerance
 
