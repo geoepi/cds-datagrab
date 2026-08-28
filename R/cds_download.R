@@ -27,22 +27,25 @@ validate_downloaded_target <- function(path, expected_request=NULL) {
       readable <- nc_ok
       selected_reader <- if(nc_ok) "ncdf4" else NA_character_
       expected_spec <- if(!is.null(expected_request)) {
-        tryCatch(get_variable_spec(expected_request$variable), error=function(e)get_variable_spec("era5_mintemp"))
+        if(identical(expected_request$source_family_id,"era5land_daily_mean_utc06")) get_variable_spec("era5land_tmean") else tryCatch(get_variable_spec(expected_request$variable), error=function(e)get_variable_spec("era5_mintemp"))
       } else get_variable_spec("era5_mintemp")
       expected_dates <- if(!is.null(expected_request)) normalize_date_vector(
         sprintf("%s-%s-%s", expected_request$year, expected_request$month, expected_request$day), "expected_dates"
       ) else as.Date(character())
-      selected <- if(nc_ok) intersect(expected_spec$netcdf_variable_names, names(md$variables)) else character()
-      scientific_variable_present <- length(selected) > 0L
+      selected <- if(nc_ok && !is.null(expected_request) && identical(expected_request$source_family_id,"era5land_daily_mean_utc06")) unlist(lapply(expected_request$product_ids %||% .era5land_product_ids(), function(id) intersect(get_variable_spec(id)$netcdf_variable_names,names(md$variables)))) else if(nc_ok) intersect(expected_spec$netcdf_variable_names, names(md$variables)) else character()
+      family_request <- !is.null(expected_request) && identical(expected_request$source_family_id, "era5land_daily_mean_utc06")
+      scientific_variable_present <- if(family_request) {
+        length(unique(selected)) == length(expected_request$product_ids %||% .era5land_product_ids())
+      } else length(selected) > 0L
       time_coordinate_readable <- nc_ok && length(md$decoded_dates) > 0L
       decoded_keys <- if(nc_ok) format(normalize_date_vector(md$decoded_dates, "decoded_dates"), "%Y-%m-%d") else character()
       expected_keys <- format(expected_dates, "%Y-%m-%d")
       decoded_dates_valid <- time_coordinate_readable && (!length(expected_dates) || identical(decoded_keys, expected_keys))
-      if(nc_ok && (length(md$coordinate_variables$latitude) == 0L || length(md$coordinate_variables$longitude) == 0L || !time_coordinate_readable || !length(selected) || !decoded_dates_valid)) {
+      if(nc_ok && (length(md$coordinate_variables$latitude) == 0L || length(md$coordinate_variables$longitude) == 0L || !time_coordinate_readable || !scientific_variable_present || !decoded_dates_valid)) {
         nc_ok <- FALSE
         reason <- "netcdf_metadata_incomplete_or_dates_mismatch"
       }
-      if(nc_ok && length(selected)) {
+      if(nc_ok && length(selected) && !identical(expected_request$source_family_id %||% "","era5land_daily_mean_utc06")) {
         source_units <- md$variables[[selected[[1]]]]$units
         normalized_source <- normalize_source_units(source_units)
         expected_source <- normalize_source_units(expected_spec$source_units)

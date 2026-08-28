@@ -24,11 +24,54 @@ cds_datagrab_repo_dir() {
   printf '%s\n' "${REPO_DIR:-${SLURM_SUBMIT_DIR:-$script_dir}}"
 }
 
+cds_datagrab_resolve_config_path() {
+  local config_path="$1" candidate
+  if [[ "$config_path" == /* || "$config_path" =~ ^[A-Za-z]:[\\/] ]]; then
+    candidate="$config_path"
+  else
+    candidate="$REPO_DIR/$config_path"
+  fi
+  [[ -f "$candidate" ]] || { echo "Configuration does not exist: $candidate" >&2; return 2; }
+  [[ -r "$candidate" ]] || { echo "Configuration is not readable: $candidate" >&2; return 2; }
+  (cd -- "$(dirname -- "$candidate")" && printf '%s/%s\n' "$(pwd -P)" "$(basename -- "$candidate")")
+}
+
 cds_datagrab_config_profile() {
-  local config_path="$1" profile
-  profile="$(awk '/^project:/{on=1; next} on && /^[^ ]/{exit} on && /^  profile:/{print $2; exit}' "$config_path")"
-  [[ "$profile" == production || "$profile" == smoke ]] || { echo "Could not resolve profile from $config_path" >&2; return 2; }
-  printf '%s\n' "$profile"
+  local config_path="$1"
+  Rscript --vanilla - "$config_path" <<'RS'
+args <- commandArgs(trailingOnly = TRUE)
+config_path <- args[[1L]]
+
+if (!file.exists(config_path)) {
+  stop("Configuration does not exist: ", config_path, call. = FALSE)
+}
+if (file.access(config_path, 4L) != 0L) {
+  stop("Configuration is not readable: ", config_path, call. = FALSE)
+}
+cfg <- yaml::read_yaml(config_path)
+profile <- if (!is.null(cfg$project) && !is.null(cfg$project$profile)) {
+  cfg$project$profile
+} else {
+  cfg$profile
+}
+
+display_path <- normalizePath(config_path, mustWork = FALSE)
+if (is.null(profile) || length(profile) != 1L || is.na(profile) ||
+    !nzchar(trimws(as.character(profile)))) {
+  stop("Could not resolve project.profile from ", display_path, call. = FALSE)
+}
+profile <- tolower(trimws(as.character(profile)))
+if (!profile %in% c("smoke", "production")) {
+  stop("Unsupported configuration profile '", profile, "' in ", display_path,
+       "; expected smoke or production", call. = FALSE)
+}
+cat(profile)
+RS
+}
+
+cds_datagrab_normalize_profile() {
+  local profile="$1"
+  printf '%s' "$profile" | tr '[:upper:]' '[:lower:]' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
 }
 
 cds_datagrab_product_id() {
@@ -54,20 +97,64 @@ cds_datagrab_validate_root_marker() {
 
 cds_datagrab_prepare_environment() {
   REPO_DIR="${REPO_DIR:-$(cds_datagrab_repo_dir)}"
+  REPO_DIR="$(cd -- "$REPO_DIR" && pwd -P)"
   CONFIG="${CONFIG:?CONFIG must be set}"
-  local config_path="$REPO_DIR/$CONFIG" config_profile
-  [[ -f "$config_path" ]] || { echo "Configuration does not exist: $config_path" >&2; return 2; }
+  local config_path config_profile explicit_profile
+  config_path="$(cds_datagrab_resolve_config_path "$CONFIG")"
   config_profile="$(cds_datagrab_config_profile "$config_path")"
-  PROFILE="${PROFILE:-$config_profile}"
-  [[ "$PROFILE" == "$config_profile" ]] || { echo "PROFILE=$PROFILE conflicts with configuration profile=$config_profile" >&2; return 2; }
+  CONFIG="$config_path"
+  if [[ -n "${PROFILE:-}" ]]; then
+    explicit_profile="$PROFILE"
+    PROFILE="$(cds_datagrab_normalize_profile "$PROFILE")"
+    [[ "$PROFILE" == smoke || "$PROFILE" == production ]] || { echo "Unsupported explicit PROFILE='$explicit_profile'; expected smoke or production" >&2; return 2; }
+    [[ "$PROFILE" == "$config_profile" ]] || {
+      echo "PROFILE='$explicit_profile' conflicts with configuration profile='$config_profile' from $config_path" >&2
+      return 2
+    }
+  else
+    PROFILE="$config_profile"
+  fi
   cds_datagrab_resolve_root "$PROFILE"
   local repo_abs root_abs
   repo_abs="$(cd "$REPO_DIR" && pwd -P)"; root_abs="$(mkdir -p "$CDS_DATAGRAB_ROOT" && cd "$CDS_DATAGRAB_ROOT" && pwd -P)"
   [[ "$root_abs" != "$repo_abs" && "$root_abs" != "$repo_abs"/* ]] || { echo "Output root must be outside the repository checkout" >&2; return 2; }
   CDS_DATAGRAB_R_LIB="${CDS_DATAGRAB_R_LIB:?CDS_DATAGRAB_R_LIB must point to the external installed cdsdatagrab library}"
+  R_LIBS_USER="${CDS_DATAGRAB_R_LIB}:${HOME_R_LIB}"
   export REPO_DIR CONFIG PROFILE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB HOME_R_LIB R_LIBS_USER
   unset R_LIBS_SITE
   cds_datagrab_validate_root_marker
+}
+
+cds_datagrab_prepare_plan_environment() {
+  REPO_DIR="${REPO_DIR:-$(cds_datagrab_repo_dir)}"
+  REPO_DIR="$(cd -- "$REPO_DIR" && pwd -P)"
+  CONFIG="${CONFIG:?CONFIG must be set}"
+  local config_path config_profile explicit_profile repo_abs root_abs
+  config_path="$(cds_datagrab_resolve_config_path "$CONFIG")"
+  config_profile="$(cds_datagrab_config_profile "$config_path")"
+  CONFIG="$config_path"
+  if [[ -n "${PROFILE:-}" ]]; then
+    explicit_profile="$PROFILE"
+    PROFILE="$(cds_datagrab_normalize_profile "$PROFILE")"
+    [[ "$PROFILE" == smoke || "$PROFILE" == production ]] || { echo "Unsupported explicit PROFILE='$explicit_profile'; expected smoke or production" >&2; return 2; }
+    [[ "$PROFILE" == "$config_profile" ]] || {
+      echo "PROFILE='$explicit_profile' conflicts with configuration profile='$config_profile' from $config_path" >&2
+      return 2
+    }
+  else
+    PROFILE="$config_profile"
+  fi
+  cds_datagrab_resolve_root "$PROFILE"
+  repo_abs="$(cd "$REPO_DIR" && pwd -P)"
+  root_abs="$(realpath -m -- "$CDS_DATAGRAB_ROOT")"
+  [[ "$root_abs" != "$repo_abs" && "$root_abs" != "$repo_abs"/* ]] || { echo "Output root must be outside the repository checkout" >&2; return 2; }
+  CDS_DATAGRAB_R_LIB="${CDS_DATAGRAB_R_LIB:?CDS_DATAGRAB_R_LIB must point to the external installed cdsdatagrab library}"
+  R_LIBS_USER="${CDS_DATAGRAB_R_LIB}:${HOME_R_LIB}"
+  export REPO_DIR CONFIG PROFILE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB HOME_R_LIB R_LIBS_USER
+  unset R_LIBS_SITE
+  if [[ -e "$CDS_DATAGRAB_ROOT/.cds-datagrab-root" ]]; then
+    cds_datagrab_validate_root_marker
+  fi
 }
 
 cds_datagrab_validate_window() {
@@ -79,7 +166,9 @@ cds_datagrab_validate_window() {
 }
 
 cds_datagrab_print_summary() {
-  local product="${PRODUCT:-$(cds_datagrab_product_id "$REPO_DIR/$CONFIG")}" data="$CDS_DATAGRAB_ROOT/data/$PROFILE/$product" run="$CDS_DATAGRAB_ROOT/runs/$PROFILE/$product" log="$CDS_DATAGRAB_ROOT/logs/slurm/$PROFILE"
+  local product data run log
+  product="${PRODUCT:-$(cds_datagrab_product_id "$REPO_DIR/$CONFIG")}"
+  data="$CDS_DATAGRAB_ROOT/data/$PROFILE/$product"; run="$CDS_DATAGRAB_ROOT/runs/$PROFILE/$product"; log="$CDS_DATAGRAB_ROOT/logs/slurm/$PROFILE"
   printf 'product: %s\nconfiguration: %s\nprofile: %s\nresolved root: %s (%s)\ndata directory: %s\nrun directory: %s\nSlurm log directory: %s\neffective start: %s\neffective end: %s\ndry-run state: %s\nsource commit: %s\ninstalled commit: %s\n' "$product" "$CONFIG" "$PROFILE" "$CDS_DATAGRAB_ROOT" "$CDS_DATAGRAB_ROOT_SOURCE" "$data" "$run" "$log" "${START_DATE:-configured}" "${END_DATE:-configured}" "${DRY_RUN:-true}" "$(git -C "$REPO_DIR" rev-parse HEAD 2>/dev/null || echo unavailable)" "$(cat "${CDS_DATAGRAB_R_LIB}/.cds-datagrab-installed-commit" 2>/dev/null || echo unavailable)"
 }
 

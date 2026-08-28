@@ -11,6 +11,6 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.1.0)
 Imports: terra, sf, yaml, fs, jsonlite, digest, ISOweek
-Suggests: testthat, ecmwfr, ncdf4, optparse, withr, devtools
+Suggests: testthat, ecmwfr, httr, ncdf4, optparse, withr, devtools
 Config/testthat/edition: 3
 RoxygenNote: 7.3.2

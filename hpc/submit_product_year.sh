@@ -18,11 +18,13 @@ case "$product" in
   era5_soilmoist) wrapper="$SCRIPT_DIR/submit_era5_soilmoist.sh"; config="config/era5_soilmoist_production.yml";;
   era5_lai_low) wrapper="$SCRIPT_DIR/submit_era5_lai_low.sh"; config="config/era5_lai_low_production.yml";;
   agera5_relhum_min) wrapper="$SCRIPT_DIR/submit_agera5_relhum_min.sh"; config="config/agera5_relhum_min_production.yml";;
+  era5land_daily_mean_utc06) wrapper="$SCRIPT_DIR/submit_era5land_daily_mean.sh"; config="config/era5land_daily_mean_utc06_production.yml"; family_products="era5land_tmean,era5land_soiltemp_l1_mean,era5land_soiltemp_l2_mean,era5land_soilwater_l1_mean,era5land_soilwater_l2_mean,era5land_surface_pressure_mean,era5land_lai_high_mean,era5land_lai_low_mean";;
+  era5land_tmean|era5land_soiltemp_l1_mean|era5land_soiltemp_l2_mean|era5land_soilwater_l1_mean|era5land_soilwater_l2_mean|era5land_surface_pressure_mean|era5land_lai_high_mean|era5land_lai_low_mean) wrapper="$SCRIPT_DIR/submit_era5land_daily_mean.sh"; config="config/era5land_daily_mean_utc06_production.yml"; family_products="$product";;
   *) echo "Unknown product identifier: $product" >&2; exit 2;;
 esac
 [[ "$year" =~ ^20(22|23|24|25|26)$ ]] || { echo "Year must be between 2022 and 2026" >&2; exit 2; }
 [[ "$mode" == plan || "$mode" == execute ]] || { echo "Mode must be plan or execute" >&2; exit 2; }
-export PRODUCT="$product" CONFIG="$config" PROFILE=production START_DATE="${year}-01-01" END_DATE="${end_date:-${year}-12-31}" DRY_RUN=true CDS_DATAGRAB_ROOT="${output_root:-${CDS_DATAGRAB_ROOT:-}}"
+export PRODUCT="$product" PRODUCT_IDS="${family_products:-}" CONFIG="$config" PROFILE=production START_DATE="${year}-01-01" END_DATE="${end_date:-${year}-12-31}" DRY_RUN=true CDS_DATAGRAB_ROOT="${output_root:-${CDS_DATAGRAB_ROOT:-}}"
 if [[ "$mode" == execute ]]; then DRY_RUN=false; export DRY_RUN; fi
 cds_datagrab_prepare_environment
 cds_datagrab_validate_window

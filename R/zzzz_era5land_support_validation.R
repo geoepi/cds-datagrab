@@ -1,0 +1,18 @@
+validate_template_coverage <- function(output, template, require_complete = TRUE, diagnostic_dir = NULL, date = NULL, prefix = NULL, support_mask = NULL) {
+  out <- if (is.character(output)) terra::rast(output) else output
+  if (!isTRUE(terra::compareGeom(out, template, stopOnError = FALSE, messages = FALSE))) stop("Output and template geometry do not match", call. = FALSE)
+  if (!is.null(support_mask) && !isTRUE(terra::compareGeom(support_mask, template, stopOnError = FALSE, messages = FALSE))) stop("Support mask and template geometry do not match", call. = FALSE)
+  template_values <- as.numeric(terra::values(template, mat = FALSE)); output_values <- as.numeric(terra::values(out, mat = FALSE)); master_valid <- !is.na(template_values)
+  support_values <- if (is.null(support_mask)) template_values else as.numeric(terra::values(support_mask, mat = FALSE)); supported <- !is.na(support_values) & master_valid
+  if (length(template_values) != length(output_values)) stop("Output and template cell counts differ", call. = FALSE)
+  missing_inside <- supported & !is.finite(output_values); structural_exclusion <- master_valid & !supported; outside_mask <- !master_valid & is.finite(output_values); outside_support <- !supported & is.finite(output_values)
+  idx <- which(missing_inside); xy <- if (length(idx)) terra::xyFromCell(template, idx) else matrix(numeric(), ncol = 2L)
+  complete <- !any(missing_inside | outside_mask | outside_support)
+  result <- list(template_non_na = sum(master_valid), master_template_cells = sum(master_valid), supported_cells = sum(supported), structurally_unsupported_cells = sum(structural_exclusion), output_non_na = sum(is.finite(output_values)), missing_inside_count = sum(missing_inside), missing_supported_count = sum(missing_inside), pre_repair_missing_supported_count = sum(missing_inside), outside_mask_count = sum(outside_mask), outside_support_finite_count = sum(outside_support), complete = complete, missing_cell_indices = idx, missing_cell_details = if (length(idx)) lapply(seq_along(idx), function(i) list(cell_id = idx[[i]], row = terra::rowFromCell(template, idx[[i]]), column = terra::colFromCell(template, idx[[i]]), template_x = xy[i, 1L], template_y = xy[i, 2L], longitude = xy[i, 1L], latitude = xy[i, 2L], template_value = template_values[idx[[i]]])) else list(), missing_x_range = if (length(idx)) range(xy[, 1L]) else c(NA_real_, NA_real_), missing_y_range = if (length(idx)) range(xy[, 2L]) else c(NA_real_, NA_real_))
+  if (!is.null(diagnostic_dir)) {
+    fs::dir_create(diagnostic_dir, recurse = TRUE); stem <- if (is.null(date)) "output" else paste0(prefix %||% "mintemp", "_", format(as.Date(date), "%Y-%m-%d")); masks <- list(missing_inside = missing_inside, outside_mask = outside_mask, structural_support_exclusion = structural_exclusion, unexpected_post_repair_missing = missing_inside)
+    result$coverage_diagnostic_paths <- vapply(names(masks), function(name) { path <- file.path(diagnostic_dir, paste0(stem, "_", name, ".tif")); r <- template; terra::values(r) <- ifelse(masks[[name]], 1, NA); terra::writeRaster(r, path, overwrite = TRUE); path }, character(1)); names(result$coverage_diagnostic_paths) <- names(masks)
+  } else result$coverage_diagnostic_paths <- character()
+  if (isTRUE(require_complete) && !isTRUE(result$complete)) stop(sprintf("Template coverage incomplete: missing_inside_count=%d missing_supported_count=%d structurally_unsupported_count=%d outside_support_finite_count=%d outside_mask_count=%d", result$missing_inside_count, result$missing_supported_count, result$structurally_unsupported_cells, result$outside_support_finite_count, result$outside_mask_count), call. = FALSE)
+  result
+}

@@ -1,20 +1,65 @@
 # Production validation summary
 
-This summary records validated behavior without inventing unavailable live-run counts.
+This document records the validated ERA5-Land daily-mean production state conservatively. It does not treat the configured future horizon as observed data, and it does not report weekly production as complete.
 
-The consolidated-root migration was verified by matching file counts, matching byte totals, checksum-mode `rsync` comparisons, successful planning tests for all four products, and zero newly planned dates after switching to the consolidated root. No live counts are invented here. The template SHA256 remains `4BE01F0ECAFF35216A72EB8F27E791311AF90D35B5A4FFF1E46A74EDB6DC633B`.
+## Validated daily production
 
-| Product | Smoke / complete-week | Production period | Units | Weekly statistic | Reuse demonstrated |
-|---|---|---|---|---|---|
-| ERA5 minimum temperature | validated in repository tests and established workflow | 2022-01-01 through 2026-12-31 configured | K → °C | minimum | yes |
-| ERA5 soil moisture | validated in repository tests and established workflow | 2022-01-01 through 2026-12-31 configured | m³ m⁻³ | mean | yes |
-| ERA5 low-vegetation LAI | Atlas smoke, complete-week, annual, rerun and raw reuse reported successful | 2022-01-01 through 2026-12-31 configured | m² m⁻² | mean | yes |
-| AgERA5 minimum RH | Atlas smoke, complete-week, annual, rerun and ZIP reuse reported successful | 2022-01-01 through 2026-12-31 configured | % | mean | yes |
+The ERA5-Land daily-mean family completed historical daily production successfully on Atlas. The final validated inventory is:
 
-All products use `spatial_domain/study_area_raster.tif` and the template checksum below. Weekly outputs require seven daily rasters. The initial 2022 boundary week and any final observed-data boundary week remain intentionally incomplete when dates outside the configured/effective window would be required.
+| Measure | Validated result |
+|---|---:|
+| ERA5-Land products | 8 |
+| Daily TIFFs per product | 1,654 |
+| Daily TIFFs total | 13,232 |
+| Produced/observed daily period | 2022-01-01 through 2026-07-12 |
+| Configured horizon | 2022-01-01 through 2026-12-31 |
+
+The configured horizon is retained in the production YAML, but dates after 2026-07-12 are not claimed as observed or produced. Weekly aggregation has not been started in this production pass. For the currently produced daily period, the expected complete-week validation target is 237 ISO weeks per product and 1,896 weekly TIFFs total.
+
+The eight outputs are additive to the established standalone products `era5_mintemp`, `era5_soilmoist`, `era5_lai_low`, and `agera5_relhum_min`. All ERA5-Land outputs use the shared `era5land_daily_mean_utc06` source family and one monthly `derived-era5-land-daily-statistics` request containing eight variables, with `daily_mean`, `utc-06:00`, and `1_hourly` request settings.
+
+## Restart and recovery validation
+
+Validated behavior includes:
+
+- complete monthly requests fast-forward without reopening source archives;
+- complete products within incomplete requests fast-forward independently;
+- missing product dates can be processed without rewriting complete products;
+- valid daily TIFFs and request-specific sidecars are reused;
+- processing is resumable; and
+- production provenance sidecars can be audited/repaired without rewriting TIFFs.
+
+A March 2022 soil-water layer 1 recovery test processed 31 missing daily TIFFs for `era5land_soilwater_l1_mean`, while the other seven products were `reused_complete`. A second identical run performed complete-month fast-forward with `written=0`, `reused=248`, and `status=success`.
+
+## Provenance repair validation
+
+Historical sidecar provenance repair was applied and validated with:
+
+```text
+examined=2585
+already_correct=2585
+needs_repair=0
+ambiguous=0
+missing_sidecar=0
+failed=0
+```
+
+TIFF checksums before and after repair were identical. The repair utility is date/request scoped, defaults to dry-run, updates only whitelisted sidecar fields under `--apply`, writes no TIFFs, fails ambiguous mappings rather than guessing, and retains an audit CSV in the output-root diagnostics directory.
+
+## Coverage and validation safeguards
+
+ERA5-Land coverage repair is bounded and auditable. It uses original finite projected donors, at most four cells per repair component, local target radius two, up to eight inverse-distance donors, and a source fallback no wider than 35 km. Three structural source-absence cells are represented by `spatial_domain/derived/era5land_support_mask.tif` and excluded from daily/weekly completeness checks without modifying the master template. Supported-cell gaps, larger components, invalid-range candidates, and incomplete donor support remain failures.
+
+The source-value validator tolerates only floating-point noise at finite hard bounds using an absolute tolerance of `1e-10`; the scientific volumetric soil-water range remains exactly `[0, 1]`. Values within tolerance are normalized to the boundary, while material violations fail. The reader result retains raw and normalized extrema and source clamp counts; current daily sidecars persist the normalized source extrema as `source_minimum` and `source_maximum`.
+
+NetCDF/read failures preserve the original condition class, message, call, and bounded traceback/call-stack details. If secondary failure bookkeeping fails, that diagnostic error is recorded separately and does not replace the original reader error.
+
+## Related validation references
+
+The protected template checksum remains:
 
 ```text
 4BE01F0ECAFF35216A72EB8F27E791311AF90D35B5A4FFF1E46A74EDB6DC633B
 ```
 
-The validated LAI/RH code line includes ncdf4 NetCDF4/HDF5 reading, `.nc`/`.netcdf` discovery, RH ZIP extraction, decoded source dates, active raw refresh, daily/weekly reuse, and dry-run annual planning. Exact Atlas job IDs, daily counts, weekly counts, and validation commits are intentionally not repeated here unless recoverable from retained manifests or supplied operator records.
+See [the output schema](output_schema.md), [the operator runbook](operator_runbook.md), and [the staged request lifecycle](era5land_request_lifecycle.md) for field-level and operational details. Exact ephemeral Atlas job IDs are intentionally omitted.

@@ -1,6 +1,7 @@
 .initialize_run_manifest_unannotated <- initialize_run_manifest
 initialize_run_manifest <- function(config, mode, dry_run = TRUE, execution_source = "default") {
   manifest <- .initialize_run_manifest_unannotated(config, mode, dry_run, execution_source)
+  if (exists("era5land_support_provenance", mode = "function")) manifest <- modifyList(manifest, era5land_support_provenance(config))
   repo <- Sys.getenv("REPO_DIR", "")
   source_commit <- if (nzchar(repo)) tryCatch(trimws(system2("git", c("-C", repo, "rev-parse", "HEAD"), stdout=TRUE, stderr=FALSE)), error=function(e) NA_character_) else NA_character_
   lib <- Sys.getenv("CDS_DATAGRAB_R_LIB", "")

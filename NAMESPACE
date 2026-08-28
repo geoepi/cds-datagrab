@@ -23,6 +23,13 @@ convert_source_units, validate_variable_values, aggregate_daily_values,
 aggregate_weekly_values, daily_output_filename, weekly_output_filename,
 build_variable_requests, process_downloaded_variable, normalize_manifest_dates,
  weekly_input_fingerprint)
+export(resolve_source_storage_paths, era5land_family_product_ids,
+ era5land_expected_dates, era5land_request_for_date, era5land_validate_debug_date,
+ build_era5land_daily_mean_requests, run_era5land_daily_mean_family,
+ detect_container_type, era5land_registry_path, era5land_read_request_registry,
+ era5land_write_request_registry, era5land_validate_raw_archive,
+ era5land_stage_requests, era5land_retrieve_requests,
+ era5land_migrate_legacy_unavailable_rows, era5land_query_cds_job_status)
 export(run_environmental_pipeline, request_adapter_for_spec, request_api_fields,
        build_cds_api_payload, validate_cds_api_payload, is_transient_cds_error,
        with_cds_retry, cds_retry_delay, align_extent_to_source_grid,

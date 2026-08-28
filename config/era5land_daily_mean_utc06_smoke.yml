@@ -1,0 +1,11 @@
+# LAI high/low are climatological fields in this family; repeated daily layers are expected.
+project: {dataset_id: era5land_tmean, source_family_id: era5land_daily_mean_utc06, profile: smoke, output_prefix: era5land}
+spatial: {template_path: spatial_domain/study_area_raster.tif, bbox_path: spatial_domain/study_bbox.gpkg, request_extent_source: template_bbox_union, api_bbox_buffer_degrees: 1.0, source_grid_degrees: 0.1, align_request_to_source_grid: true, mask_to_template: true, require_complete_template_coverage: true, write_coverage_diagnostics: true}
+paths: {root: null}
+coverage: {support_mask: spatial_domain/derived/era5land_support_mask.tif, unsupported_cells_audit: spatial_domain/derived/era5land_unsupported_cells.csv, local_target_radius_cells: 2, source_buffer_max_km: 35}
+temporal: {initial_start_date: '2026-02-01', observed_end: '2026-02-03', configured_start_date: '2026-02-01', configured_end_date: '2026-02-03', source_lag_days: 0, overlap_days: 0, future_end_date: '2026-02-03'}
+cds: {dataset_short_name: derived-era5-land-daily-statistics, product_type: reanalysis, variable: 2m_temperature, daily_statistic: daily_mean, time_zone: utc-06:00, frequency: 1_hourly, data_format: netcdf, download_format: unarchived, request_chunk: month}
+processing: {source_units: K, output_units: degrees C, unit_conversion: kelvin_to_celsius, resampling_method: bilinear, overwrite_observed_overlap: true, datatype: FLT4S, naflag: -9999}
+weekly: {aggregation: mean, require_complete_week: true, expected_days: 7}
+future: {daily_enabled: false, weekly_enabled: false}
+validation: {minimum: -100, maximum: 70, physical_minimum: -100, physical_maximum: 70, require_exact_template_geometry: true, hard_tolerance: 0.000001, coverage_max_repair_count: 256, coverage_max_repair_fraction: 0.01, coverage_max_component_size: 4, coverage_max_donor_radius_cells: 2, coverage_max_donor_radius_km: 75, coverage_max_source_buffer_km: 35, coverage_donor_count: 8}
