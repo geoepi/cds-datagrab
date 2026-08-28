@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 args <- commandArgs(trailingOnly=TRUE)
 if ("--help" %in% args) {
-  cat("Usage: Rscript scripts/run_era5land_daily_mean.R [--mode plan|stage-requests|retrieve-requests|process|execute] [--config PATH] [--output-root PATH] [--dry-run [true|false]]\n")
+  cat("Usage: Rscript scripts/run_era5land_daily_mean.R [--mode plan|download|stage-requests|retrieve-requests|process|aggregate|execute|full] [--config PATH] [--output-root PATH] [--products ID[,ID...]] [--start-date YYYY-MM-DD] [--end-date YYYY-MM-DD] [--dry-run [true|false]] [--overwrite] [--rebuild-all-weeks]\n")
   quit(save="no", status=0L, runLast=FALSE)
 }
 value <- function(flag, default=NULL) { i <- match(flag,args); if (is.na(i)) default else if (i == length(args) || startsWith(args[[i+1L]], "--")) stop(flag, " requires a value", call.=FALSE) else args[[i+1L]] }

@@ -1,144 +1,108 @@
 # cds-datagrab
 
-For ERA5-Land source-mask gaps, the same-cell nearest projection can also be missing. The repair hierarchy searches original unmasked projected target-grid donors in configurable radius-1 and radius-2 rings (default radius two, approximately 50 km), using up to eight inverse-distance donors. Donors are never repaired cells, and a component is accepted only when every cell is repaired. Component CSV diagnostics and failed product manifests retain donor distances, reasons, original exceptions, and product/date status. Use `scripts/debug_era5land_slice.R` for one product/date before repeating a family smoke run.
-
-ERA5-Land coverage repair is deliberately bounded: projection-created 8-neighbour components of at most four cells may use the unmasked nearest-neighbour donor; source-nodata and larger components fail validation with diagnostics. Daily outputs are validated before and after final promotion, and manifests retain repair counts, output checksums, reuse, and failure stages.
-
-`cds-datagrab` is a reproducible R-package workflow for retrieving environmental data from the Copernicus Climate Data Store (CDS), aligning source data to the protected study-area template, writing daily GeoTIFFs, and aggregating complete ISO weeks.
-
-The workflow keeps raw CDS responses, extracted source files, template-aligned daily rasters, weekly rasters, inventories, run manifests, and Slurm logs separate. Raw and derived products are resumable and are never written into the Git checkout.
+`cds-datagrab` is a reproducible R-package workflow for retrieving environmental data from the Copernicus Climate Data Store (CDS), aligning source data to the protected study-area template, writing daily GeoTIFFs, and aggregating complete ISO weeks. Generated data live outside the Git checkout and are organized so that raw requests, extracted source files, derived rasters, inventories, manifests, and Slurm logs remain auditable and resumable.
 
 ## Storage layout
 
-Production root: `/project/disease_ecology/cds-datagrab-output`
-Smoke root: `/project/disease_ecology/cds-datagrab-smoke-output`
+Atlas defaults are `/project/disease_ecology/cds-datagrab-output` for production and `/project/disease_ecology/cds-datagrab-smoke-output` for smoke. Use an external root for any other deployment.
 
 ```text
 <root>/
 ├── data/<profile>/<product_id>/
-├── runs/<profile>/<product_id>/<run_id>/
+│   ├── daily/
+│   ├── weekly/
+│   └── ...
+├── data/<profile>/_sources/era5land_daily_mean_utc06/
+│   ├── raw/
+│   ├── extracted/
+│   └── requests/
+├── runs/<profile>/<product_id-or-source-run>/<run_id>/
 └── logs/slurm/<profile>/
 ```
 
-All products share one root and are separated below `data/<profile>/`. Current product identifiers are `era5_mintemp`, `era5_soilmoist`, `era5_lai_low`, and `agera5_relhum_min`. New variables receive new product directories, not new top-level roots. Production and smoke data are separated by root and profile; annual reruns reuse valid raw, daily, and weekly products. Historical manifests may contain former absolute paths, but old product-specific roots are retired and must not be used in new commands.
+The eight ERA5-Land product directories contain derived daily and weekly products. Their raw monthly archives are stored once under the shared `era5land_daily_mean_utc06` source family; request-scoped `member_inventory.csv`, `source_map.csv`, and manifests connect each extracted source member to its product/date outputs.
 
-## Supported products
+## Product catalog
 
-| Product | CDS dataset / variable | Source → output units | Daily meaning | Weekly rule | Production configuration / wrapper |
+The ERA5-Land products are additive. They do not replace the four established standalone products.
+
+| Product ID | Source dataset / variable | Output units | Daily statistic / temporal meaning | Weekly rule | Lineage |
 |---|---|---|---|---|---|
-| ERA5 minimum temperature | `derived-era5-single-levels-daily-statistics` / `2m_temperature` | K → °C | CDS daily minimum from 6-hourly data | cellwise minimum of 7 observed days | `config/era5_mintemp_production.yml` / `hpc/submit_era5_mintemp.sh` |
-| ERA5 soil moisture | `derived-era5-single-levels-daily-statistics` / `volumetric_soil_water_layer_1` | m³ m⁻³ → m³ m⁻³ | CDS daily mean, layer 1 | cellwise mean of 7 observed days | `config/era5_soilmoist_production.yml` / `hpc/submit_era5_soilmoist.sh` |
-| ERA5 low-vegetation LAI | `reanalysis-era5-single-levels` / `leaf_area_index_low_vegetation` (`lai_lv`) | m² m⁻² (dimensionless source accepted) → m² m⁻² | 00:00 UTC monthly-climatology observation | cellwise mean of 7 observed days | `config/era5_lai_low_production.yml` / `hpc/submit_era5_lai_low.sh` |
-| AgERA5 minimum RH | `sis-agrometeorological-indicators` / `2m_relative_humidity_derived` | % → % | precomputed 24-hour local-time minimum | cellwise mean of 7 observed days | `config/agera5_relhum_min_production.yml` / `hpc/submit_agera5_relhum_min.sh` |
+| `era5_mintemp` | `derived-era5-single-levels-daily-statistics` / `2m_temperature` | °C | CDS daily minimum from 6-hourly data | minimum of 7 observed days | standalone |
+| `era5_soilmoist` | `derived-era5-single-levels-daily-statistics` / `volumetric_soil_water_layer_1` | m³ m⁻³ | CDS daily mean, layer 1 | mean of 7 observed days | standalone |
+| `era5_lai_low` | `reanalysis-era5-single-levels` / `leaf_area_index_low_vegetation` (`lai_lv`) | m² m⁻² | 00:00 UTC monthly-climatology observation | mean of 7 observed days | standalone |
+| `agera5_relhum_min` | `sis-agrometeorological-indicators` / `2m_relative_humidity_derived` | % | precomputed 24-hour local-time minimum | mean of 7 observed days | standalone |
+| `era5land_tmean` | `derived-era5-land-daily-statistics` / `2m_temperature` | °C | arithmetic mean over the UTC−6 calendar day | mean of 7 daily means | `era5land_daily_mean_utc06` |
+| `era5land_soiltemp_l1_mean` | same / `soil_temperature_level_1` | °C | UTC−6 daily mean, 0–7 cm | mean | `era5land_daily_mean_utc06` |
+| `era5land_soiltemp_l2_mean` | same / `soil_temperature_level_2` | °C | UTC−6 daily mean, 7–28 cm | mean | `era5land_daily_mean_utc06` |
+| `era5land_soilwater_l1_mean` | same / `volumetric_soil_water_layer_1` | m³ m⁻³ | UTC−6 daily mean, 0–7 cm | mean | `era5land_daily_mean_utc06` |
+| `era5land_soilwater_l2_mean` | same / `volumetric_soil_water_layer_2` | m³ m⁻³ | UTC−6 daily mean, 7–28 cm | mean | `era5land_daily_mean_utc06` |
+| `era5land_surface_pressure_mean` | same / `surface_pressure` | kPa | UTC−6 daily mean | mean | `era5land_daily_mean_utc06` |
+| `era5land_lai_high_mean` | same / `leaf_area_index_high_vegetation` | m² m⁻² | UTC−6 daily label from monthly climatology | mean | `era5land_daily_mean_utc06` |
+| `era5land_lai_low_mean` | same / `leaf_area_index_low_vegetation` | m² m⁻² | UTC−6 daily label from monthly climatology | mean | `era5land_daily_mean_utc06` |
 
-ERA5 direct NetCDF is read with `ncdf4`; AgERA5 ZIP members are safely extracted and read with the same backend when Atlas GDAL cannot open NetCDF. See [the output reference](docs/output_schema.md) for field-level provenance.
+The ERA5-Land request always contains all eight variables, with `daily_statistic = daily_mean`, `time_zone = utc-06:00`, and `frequency = 1_hourly`. High- and low-vegetation LAI represent monthly variation without interannual variability, so consecutive daily labels may contain identical layers.
 
-### ERA5-Land daily-mean family
+## Production status
 
-These eight additive products share one monthly `derived-era5-land-daily-statistics` request (`daily_mean`, `utc-06:00`, `1_hourly`) and fan out into separate product directories. CDS may return that request as a ZIP, with one NetCDF member per source variable; the pipeline detects containers by content, extracts members safely, and decodes `valid_time` CF units without shifting the UTC−6 labels again. Users should not manually unzip operational inputs. They do not replace the existing ERA5 minimum-temperature, soil-moisture, or low-LAI products.
+The ERA5-Land daily-mean family has been successfully exercised on Atlas. The validated historical daily inventory contains 1,654 daily TIFFs per ERA5-Land product, 13,232 total, covering **2022-01-01 through 2026-07-12**. This is the current produced/observed endpoint.
 
-| Product | Source variable | Units | Daily meaning | Weekly rule |
-|---|---|---|---|---|
-| `era5land_tmean` | `2m_temperature` | K → °C | UTC−6 arithmetic daily mean | mean of 7 daily means |
-| `era5land_soiltemp_l1_mean` | `soil_temperature_level_1` | K → °C | UTC−6 arithmetic daily mean; 0–7 cm | mean |
-| `era5land_soiltemp_l2_mean` | `soil_temperature_level_2` | K → °C | UTC−6 arithmetic daily mean; 7–28 cm | mean |
-| `era5land_soilwater_l1_mean` | `volumetric_soil_water_layer_1` | m³ m⁻³ | UTC−6 arithmetic daily mean; 0–7 cm | mean |
-| `era5land_soilwater_l2_mean` | `volumetric_soil_water_layer_2` | m³ m⁻³ | UTC−6 arithmetic daily mean; 7–28 cm | mean |
-| `era5land_surface_pressure_mean` | `surface_pressure` | Pa → kPa | UTC−6 arithmetic daily mean | mean |
-| `era5land_lai_high_mean` | `leaf_area_index_high_vegetation` | m² m⁻² | UTC−6 daily label | mean |
-| `era5land_lai_low_mean` | `leaf_area_index_low_vegetation` | m² m⁻² | UTC−6 daily label | mean |
+The configured horizon remains **2022-01-01 through 2026-12-31**. Dates after 2026-07-12 are configured dates, not evidence that daily rasters have been observed or produced. Weekly production was not started in this production pass. The expected validation target for the currently produced daily period is 237 complete ISO weeks per product, or 1,896 weekly TIFFs across the eight products.
 
-High- and low-vegetation LAI are monthly-climatology products: they represent monthly variability but not interannual variability. Consecutive daily layers may therefore be identical and are not interpreted as independently observed daily vegetation dynamics.
-
-## Production period and annual execution
-
-The canonical configured range is **2022-01-01 through 2026-12-31**. Production execution is one calendar year at a time using the same product-specific output root. The configured horizon is not the same as the effective observed-data endpoint: unavailable future dates are recorded as future/unavailable and are not submitted to CDS.
-
-Annual windows may narrow, but never expand, the configured range. A non-dry-run window spanning multiple years is rejected unless `ALLOW_MULTIYEAR=true`; annual execution is the safe default. The first and final boundary ISO weeks are not fabricated: weekly products require seven in-range daily rasters.
-
-## Atlas installation and prerequisites
-
-Tested Atlas setup:
+## Atlas installation and preflight
 
 ```bash
 module purge
 module load r/4.5 udunits gdal proj geos git
+export REPO_DIR=/project/disease_ecology/cds-datagrab
 export CDS_DATAGRAB_R_LIB=/project/disease_ecology/cds-datagrab-r-library/4.5
 export HOME_R_LIB=/home/john.humphreys/R/x86_64-pc-linux-gnu-library/4.5
 export R_LIBS_USER="${CDS_DATAGRAB_R_LIB}:${HOME_R_LIB}"
 unset R_LIBS_SITE
-```
-
-Required package dependencies are listed in `DESCRIPTION`; the runtime preflight additionally verifies `terra`, `sf`, `ISOweek`, `ncdf4`, and `ecmwfr` where required. Install the package outside the checkout:
-
-```bash
-export REPO_DIR=/project/disease_ecology/cds-datagrab
 bash hpc/install_cdsdatagrab_atlas.sh "$REPO_DIR"
 REPO_DIR="$REPO_DIR" Rscript hpc/preflight_cdsdatagrab.R
-git -C "$REPO_DIR" rev-parse HEAD
-cat "$CDS_DATAGRAB_R_LIB/.cds-datagrab-installed-commit"
 ```
 
-The source and installed commits must match before production execution.
+The source checkout commit and `.cds-datagrab-installed-commit` must match before execution. Planning and preflight do not contact CDS. Keep `ecmwfr_PAT` in a secure environment and never print or commit its value.
 
-## CDS credentials
+## Common execution modes
 
-An active CDS account and credential are required for execution. Export `ecmwfr_PAT` securely, for example from `~/.Renviron`, and check presence without printing the value:
-
-```bash
-Rscript - <<'RS'
-token <- Sys.getenv("ecmwfr_PAT", unset = "")
-stopifnot(nzchar(token))
-cat("CDS credential is available.\n")
-RS
-```
-
-Never commit, paste, log, or place the credential value in YAML. Planning mode does not contact CDS.
-
-## Plan, execute, validate
-
-For a first LAI production year:
+The family shell wrapper requires exactly one execution option. It plans locally with no CDS contact or Slurm submission, and submits the other modes to their corresponding Atlas Slurm runner:
 
 ```bash
+export CONFIG=config/era5land_daily_mean_utc06_production.yml
 export CDS_DATAGRAB_ROOT=/project/disease_ecology/cds-datagrab-output
-export CONFIG=config/era5_lai_low_production.yml PROFILE=production
-export START_DATE=2022-01-01 END_DATE=2022-12-31
-unset ALLOW_MULTIYEAR
 
-DRY_RUN=true  bash hpc/submit_era5_lai_low.sh   # planning only
-DRY_RUN=false bash hpc/submit_era5_lai_low.sh   # execution
+bash hpc/submit_era5land_daily_mean.sh --config "$CONFIG" --output-root "$CDS_DATAGRAB_ROOT" --dry-run
+bash hpc/submit_era5land_daily_mean.sh --config "$CONFIG" --output-root "$CDS_DATAGRAB_ROOT" --stage-requests
+bash hpc/submit_era5land_daily_mean.sh --config "$CONFIG" --output-root "$CDS_DATAGRAB_ROOT" --retrieve-requests
+bash hpc/submit_era5land_daily_mean.sh --config "$CONFIG" --output-root "$CDS_DATAGRAB_ROOT" --process
+bash hpc/submit_era5land_daily_mean.sh --config "$CONFIG" --output-root "$CDS_DATAGRAB_ROOT" --execute
 ```
 
-Inspect the run manifest, `planned_dates.csv`, request manifests, raw/daily/weekly inventories, and Slurm logs before proceeding to the next year. A genuine success has Slurm `COMPLETED`, exit code `0:0`, zero daily and weekly failures, final validation `success`, and pipeline status `success`.
-
-The generic dispatcher is convenient for annual work and defaults to planning:
+The direct R CLI is useful when a separate weekly pass is required or when selecting a subset of product IDs for local processing. The following is a smoke/validation example; do not start the pending production weekly pass without an explicit production decision:
 
 ```bash
-bash hpc/submit_product_year.sh --product era5_lai_low --year 2024 --mode plan \
-  --output-root /project/disease_ecology/cds-datagrab-output
+Rscript scripts/run_era5land_daily_mean.R --help
+Rscript scripts/run_era5land_daily_mean.R --config config/era5land_daily_mean_utc06_weekly_smoke.yml --output-root /project/disease_ecology/cds-datagrab-smoke-output --mode aggregate --dry-run false --start-date 2026-02-02 --end-date 2026-02-08
 ```
 
-Use `--mode execute` only after inspecting the plan. See [docs/operator_runbook.md](docs/operator_runbook.md) for all products, annual windows, monitoring, and safe reruns.
+It supports `plan`, `download`, `stage-requests`, `retrieve-requests`, `process`, `aggregate`, `execute`, and `full`, plus `--start-date`, `--end-date`, `--products`, `--overwrite`, and `--rebuild-all-weeks`. The annual dispatcher supports `plan` and `execute`; use `--product era5land_daily_mean_utc06` for the complete family.
 
-## Resume and troubleshooting
+## Resume and recovery
 
-Valid matching raw files, daily rasters, and weekly rasters are reused. A failed month can be retried without deleting successful months; a rerun requests only missing or invalid inputs. The same output root must be retained across annual chunks so inventory and ISO-week completion can work.
+Keep the same external root and do not delete valid TIFFs during recovery. A complete monthly request can fast-forward without reopening source archives; within an incomplete request, complete products can fast-forward while only missing or invalid product dates are processed. Valid daily TIFFs and request-specific sidecars are reused unless `--overwrite` is explicitly supplied.
 
-Common causes and remedies:
+When the 55 monthly source archives are already valid locally, do not repeat stage or retrieve merely because local processing needs to resume. Inspect the request registry and run manifest, rerun `--process`, and use the 72-hour historical process/full wrapper when running the established Atlas configuration. See [the operator runbook](docs/operator_runbook.md) and [the request lifecycle](docs/era5land_request_lifecycle.md).
 
-- CDS HTTP/2 or transport failure: retain successful months and rerun the failed plan; do not delete the root.
-- `.netcdf` versus `.nc`: both are supported case-insensitively; content validation determines the reader.
-- ERA5-Land `NetCDF: Unknown file format` errors can mean ZIP bytes were mislabeled with an `.nc` suffix. The downloader normalizes content-based extensions and reuses the existing mislabeled artifact safely.
-- Missing GDAL NetCDF support: expected on some Atlas nodes; use the ncdf4 preflight/backend.
-- Missing packages: restore the external library and preserve the home library in `R_LIBS_USER`.
-- Commit mismatch: rerun `hpc/install_cdsdatagrab_atlas.sh`.
-- Smoke logs for production: set `PROFILE=production`; wrappers reject profile/config conflicts.
-- Wrappers resolve the profile from the YAML `project.profile` field. An explicitly supplied `PROFILE` is normalized and must match it; profile is never inferred from the configuration filename.
-- Multi-year guard: submit one calendar year or explicitly review `ALLOW_MULTIYEAR=true`.
-- Incomplete boundary week or unavailable future dates: expected; do not fabricate or submit out-of-window dates.
-- Output-root safety error: use an external shared root, never the repository checkout.
+## Diagnostics and recovery tools
 
-See [docs/output_schema.md](docs/output_schema.md), [docs/operator_runbook.md](docs/operator_runbook.md), and [docs/production_validation_summary.md](docs/production_validation_summary.md).
+| Tool | Purpose and safety |
+|---|---|
+| `scripts/debug_era5land_slice.R` | Preferred first diagnostic for one cached product/date before a broad family rerun. It contacts no CDS, but writes one selected daily output, sidecar, and diagnostic run under the external root. Invocation: `Rscript scripts/debug_era5land_slice.R --config config/era5land_daily_mean_utc06_production.yml --product era5land_tmean --date 2026-07-12 --output-root /project/disease_ecology/cds-datagrab-output`. |
+| `scripts/repair_era5land_daily_sidecar_provenance.R` | Defaults to a dry-run audit. `--apply` atomically updates whitelisted sidecar provenance fields only; TIFFs are not rewritten. `--start-date` and `--end-date` scope the operation. Ambiguous mappings fail rather than being guessed; repeated application is idempotent. Apply mode retains `diagnostics/era5land_daily_sidecar_provenance_repair.csv`. |
+| `scripts/audit_output_layout.R` | Read-only inventory/path audit. The default product set is the four standalone products, so pass `--product era5land_tmean` (and repeat for other family products) when auditing ERA5-Land. Invocation: `Rscript scripts/audit_output_layout.R --output-root /project/disease_ecology/cds-datagrab-output --profile production --product era5land_tmean`. |
+| `hpc/preflight_cdsdatagrab.R` | Read-only Atlas environment/package/commit check. It requires `CDS_DATAGRAB_R_LIB` and optionally uses `REPO_DIR`; it does not submit work or contact CDS. |
+| `hpc/plan_era5land_daily_mean.R` | Read-only family plan used by the wrapper. It reports effective dates, product count, complete weeks, weekly target, request hashes, and monthly request count. |
 
-For the ERA5-Land production request lifecycle, resumable CDS staging, retrieval,
-and Atlas commands, see [docs/era5land_request_lifecycle.md](docs/era5land_request_lifecycle.md).
+For persisted fields and diagnostic semantics, see [the output schema](docs/output_schema.md) and [the production validation summary](docs/production_validation_summary.md).

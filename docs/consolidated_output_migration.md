@@ -15,6 +15,6 @@ Canonical roots are `/project/disease_ecology/cds-datagrab-output` and `/project
   → /project/disease_ecology/cds-datagrab-output/data/production/agera5_relhum_min
 ```
 
-Migration used copy–verify–switch: data and run records were migrated manually, matching counts/bytes and checksum verification were required, then repository defaults were changed. Planning tests for all four products found zero newly missing dates after switching to the consolidated root. Historical `run_manifest.json` files remain unchanged as provenance records.
+Migration used copy–verify–switch: data and run records were migrated manually, matching counts/bytes and checksum verification were required, then repository defaults were changed. Planning tests for the four pre-existing standalone products found zero newly missing dates after switching to the consolidated root. ERA5-Land uses the additional shared source-family path documented in `docs/output_schema.md`; historical `run_manifest.json` files remain unchanged as provenance records.
 
 Legacy roots are retired and are never searched automatically. Explicit use produces a warning. Rollback means restoring the previous repository defaults only after validating the target records; it does not move or delete migrated data.
