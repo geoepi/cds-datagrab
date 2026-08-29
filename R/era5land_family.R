@@ -152,6 +152,135 @@ era5land_progress <- function(...) {
   invisible(NULL)
 }
 
+era5land_aggregate_daily_inventory <- function(inventory, expected_dates) {
+  if (!nrow(inventory)) return(inventory)
+  inventory$provenance_valid <- FALSE
+  inventory$request_hash <- NA_character_
+  inventory$source_family_id <- NA_character_
+  inventory$request_start <- NA_character_
+  inventory$request_end <- NA_character_
+  for (i in seq_len(nrow(inventory))) {
+    sidecar <- paste0(inventory$path[[i]], ".json")
+    metadata <- if (file.exists(sidecar)) tryCatch(jsonlite::read_json(sidecar, simplifyVector = TRUE), error = function(e) NULL) else NULL
+    if (is.null(metadata)) next
+    value <- function(name) {
+      x <- metadata[[name]]
+      if (is.null(x) || !length(x)) NA_character_ else as.character(x[[1L]])
+    }
+    inventory$request_hash[[i]] <- value("request_hash")
+    inventory$source_family_id[[i]] <- value("source_family_id")
+    inventory$request_start[[i]] <- value("request_start")
+    inventory$request_end[[i]] <- value("request_end")
+    inventory$provenance_valid[[i]] <- identical(inventory$source_family_id[[i]], "era5land_daily_mean_utc06") && !is.na(inventory$request_hash[[i]]) && nzchar(inventory$request_hash[[i]])
+  }
+  inventory$observed_valid <- inventory$observed_valid %in% TRUE & inventory$provenance_valid %in% TRUE
+  inventory
+}
+
+era5land_product_week_failure_ids <- function(product_id, missing_weeks) {
+  if (length(missing_weeks)) paste0(product_id, "__", missing_weeks) else character()
+}
+
+era5land_aggregate_daily_mean_family <- function(config_path, cfg, expected, requests, source_paths, manifest,
+                                                 run_dir, product_ids, output_root, overwrite = FALSE,
+                                                 rebuild_all_weeks = FALSE) {
+  expected <- normalize_date_vector(expected, "expected_dates")
+  planned_assessment <- assess_iso_week_completeness(expected, expected_dates = expected)
+  complete_week_ids <- planned_assessment$week_id[planned_assessment$complete]
+  expected_week_count <- length(complete_week_ids)
+  weekly_results <- list(); products <- list(); failures <- list()
+  failed_product_weeks <- character()
+  for (id in product_ids) {
+    spec <- get_variable_spec(id)
+    pcfg <- cfg
+    pcfg$project$dataset_id <- id
+    pcfg$cds$variable <- spec$cds_variable
+    pcfg$cds$daily_statistic <- spec$daily_statistic
+    paths <- resolve_storage_paths(pcfg, attr(cfg, "project_root") %||% resolve_project_root(dirname(config_path)), source_paths$root, create = TRUE)
+    inventory <- inventory_daily_products(paths$daily_dir, spec$daily_filename_prefix, cfg$spatial$template_path, TRUE, pcfg)
+    inventory <- inventory[inventory$date %in% expected & inventory$observed_valid %in% TRUE, , drop = FALSE]
+    inventory <- era5land_aggregate_daily_inventory(inventory, expected)
+    inventory <- inventory[inventory$observed_valid %in% TRUE, , drop = FALSE]
+    aggregation <- tryCatch(
+      aggregate_daily_to_weekly(paths$daily_dir, paths$weekly_dir, spec$weekly_filename_prefix,
+        iso_weeks = complete_week_ids, require_complete_week = TRUE, overwrite = overwrite,
+        template_path = cfg$spatial$template_path, rebuild_all = rebuild_all_weeks, inventory = inventory,
+        inventory_source = "existing_era5land_daily_outputs", variable_spec = spec, config = pcfg,
+        expected_dates = expected),
+      error = function(e) list(status = "failed", written = character(), reused = character(), replaced = character(),
+        complete_weeks = character(), incomplete_weeks = data.frame(), failed = character(), failure_message = conditionMessage(e))
+    )
+    missing_weeks <- setdiff(complete_week_ids, aggregation$complete_weeks %||% character())
+    product_week_failures <- era5land_product_week_failure_ids(id, missing_weeks)
+    failed_product_weeks <- c(failed_product_weeks, product_week_failures)
+    product_status <- if (length(missing_weeks) || identical(aggregation$status, "failed")) "failed" else "success"
+    product_result <- list(product_id = id, status = product_status, requested_dates = as.character(expected),
+      complete_iso_weeks_expected = complete_week_ids, weekly_outputs_expected = expected_week_count,
+      weekly_outputs_written = length(aggregation$written %||% character()), weekly_outputs_reused = length(aggregation$reused %||% character()),
+      weekly_outputs_replaced = length(aggregation$replaced %||% character()), weekly_outputs_failed = length(missing_weeks),
+      failed_product_weeks = product_week_failures, missing_iso_weeks = missing_weeks, weekly = aggregation,
+      daily_outputs_written = 0L, daily_outputs_reused = nrow(inventory), successful_dates = as.character(inventory$date),
+      failed_dates = as.character(setdiff(expected, inventory$date)),
+      failure_stage = if (length(missing_weeks)) "aggregate_week" else NULL,
+      failure_message = if (length(missing_weeks)) paste("Incomplete or unavailable ISO weeks:", paste(missing_weeks, collapse = ", ")) else NULL)
+    products[[id]] <- product_result
+    weekly_results[[id]] <- aggregation
+    if (identical(product_status, "failed")) failures[[id]] <- product_result
+    era5land_progress("[ERA5-Land] aggregate product ", id, " complete weeks=", length(aggregation$complete_weeks %||% character()),
+      "/", expected_week_count, " written=", length(aggregation$written %||% character()),
+      " reused=", length(aggregation$reused %||% character()), " failed=", length(missing_weeks))
+  }
+  weekly_written <- sum(vapply(weekly_results, function(x) length(x$written %||% character()), integer(1)))
+  weekly_reused <- sum(vapply(weekly_results, function(x) length(x$reused %||% character()), integer(1)))
+  weekly_replaced <- sum(vapply(weekly_results, function(x) length(x$replaced %||% character()), integer(1)))
+  weekly_expected <- expected_week_count * length(product_ids)
+  weekly_failed <- length(failed_product_weeks)
+  weekly_accounted <- weekly_written + weekly_reused + weekly_replaced
+  status <- if (!weekly_expected) "success_noop" else if (weekly_failed || weekly_accounted != weekly_expected) "failed" else "success"
+  manifest$status <- status
+  manifest$family_status <- status
+  manifest$complete_iso_weeks_expected <- complete_week_ids
+  manifest$complete_iso_week_count <- expected_week_count
+  manifest$planned_request_hashes <- vapply(requests, function(x) as.character(x$request_hash %||% ""), character(1))
+  manifest$aggregate_inventory_source <- "existing_era5land_daily_outputs"
+  manifest$aggregate_mode <- TRUE
+  manifest$weekly_statistic <- "mean"
+  manifest$requested_product_dates <- as.vector(outer(product_ids, as.character(expected), paste, sep = "__"))
+  manifest$weekly_outputs_expected <- weekly_expected
+  manifest$weekly_outputs_written <- weekly_written
+  manifest$weekly_outputs_reused <- weekly_reused
+  manifest$weekly_outputs_replaced <- weekly_replaced
+  manifest$weekly_outputs_failed <- weekly_failed
+  manifest$failed_product_weeks <- failed_product_weeks
+  manifest$successful_products <- names(products)[vapply(products, function(x) identical(x$status, "success"), logical(1))]
+  manifest$failed_products <- names(products)[vapply(products, function(x) identical(x$status, "failed"), logical(1))]
+  manifest$successful_product_dates <- unlist(lapply(products[manifest$successful_products], function(x) as.vector(outer(x$product_id, x$successful_dates, paste, sep = "__"))), use.names = FALSE)
+  manifest$failed_product_dates <- failed_product_weeks
+  manifest$product_results <- unname(products)
+  manifest$failures <- unname(failures)
+  manifest$daily_outputs_written <- 0L
+  manifest$daily_outputs_reused <- sum(vapply(products, function(x) x$daily_outputs_reused, integer(1)))
+  manifest$CDS_contacted <- FALSE
+  manifest$cds_contacted <- FALSE
+  manifest$raw_reused <- FALSE
+  manifest$archive_reused <- FALSE
+  manifest$extraction_reused <- FALSE
+  manifest$completed_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
+  jsonlite::write_json(manifest, file.path(run_dir, "run_manifest.json"), pretty = TRUE, auto_unbox = TRUE, null = "null")
+  list(status = status, family_status = status, run_id = manifest$run_id, run_dir = run_dir, requests = requests,
+    request_inventory = list(source_requests_planned = length(requests), raw_archives_valid = 0L,
+      registered_pending_cds_jobs = 0L, submitted_cds_jobs = 0L, processing_cds_jobs = 0L,
+      failed_cds_jobs = 0L, expired_cds_jobs = 0L, new_cds_requests_required = 0L, retrievals_ready = 0L),
+    request_results = list(), source_paths = source_paths, products = products, failures = failures, manifest = manifest,
+    source_diagnostic = list(raw_reused = FALSE, archive_member_count = 0L, source_map_rows = 0L,
+      cds_contacted = FALSE, CDS_contacted = FALSE, aggregate_from_daily_outputs = TRUE),
+    aggregate = list(status = status, complete_iso_weeks_expected = complete_week_ids,
+      weekly_outputs_expected = weekly_expected, weekly_outputs_written = weekly_written,
+      weekly_outputs_reused = weekly_reused, weekly_outputs_replaced = weekly_replaced,
+      weekly_outputs_failed = weekly_failed, failed_product_weeks = failed_product_weeks,
+      per_product = products))
+}
+
 era5land_product_output_completeness <- function(product_id, request, config, root, require_provenance = TRUE) {
   spec <- get_variable_spec(product_id)
   pcfg <- config
@@ -339,6 +468,10 @@ run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_
     stop(message, call. = FALSE)
   }
   jsonlite::write_json(diag, file.path(run_dir, "spatial_diagnostics.json"), pretty = TRUE, auto_unbox = TRUE)
+  if (mode == "aggregate") {
+    return(era5land_aggregate_daily_mean_family(config_path, cfg, expected, requests, source_paths, manifest,
+      run_dir, product_ids, output_root, overwrite = overwrite, rebuild_all_weeks = rebuild_all_weeks))
+  }
   write_cds_request_manifests(requests, run_dir)
   registry <- era5land_registry_reconcile(requests, era5land_read_request_registry(source_paths), source_paths, cfg, persist = FALSE)
   registry_inventory <- era5land_request_inventory(requests, registry, source_paths)
