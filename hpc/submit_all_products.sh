@@ -65,8 +65,8 @@ done
 
 render_standalone_command() {
   local config="$1" wrapper="$2" start="$3" end="$4"
-  printf 'CONFIG=%q PROFILE=production MODE=process DRY_RUN=false START_DATE=%q END_DATE=%q SBATCH_SCRIPT=%q CDS_DATAGRAB_ROOT=%q bash %q' \
-    "$config" "$start" "$end" "$REPO_DIR/hpc/run_portfolio_era5_variable_daily.slurm" "$CDS_DATAGRAB_ROOT" "$wrapper"
+  printf 'CONFIG=%q PROFILE=production MODE=full DRY_RUN=false START_DATE=%q END_DATE=%q CDS_DATAGRAB_ROOT=%q bash %q' \
+    "$config" "$start" "$end" "$CDS_DATAGRAB_ROOT" "$wrapper"
 }
 render_era5land_command() {
   local config="$1" wrapper="$2" products="$3" start="$4" end="$5"

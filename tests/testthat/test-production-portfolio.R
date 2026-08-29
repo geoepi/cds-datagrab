@@ -64,7 +64,29 @@ test_that("portfolio wrapper exposes read-only plan and dependency structure", {
   expect_match(script, "run_portfolio_validate.slurm")
 })
 
+test_that("portfolio source commands use each wrapper's full execution path", {
+  script <- paste(readLines(package_file("hpc", "submit_all_products.sh"), warn = FALSE), collapse = "\n")
+  definition <- portfolio_read_definition(package_file("config", "production_portfolio.yml"))
+  standalone_wrappers <- c(
+    "submit_era5_mintemp.sh",
+    "submit_era5_soilmoist.sh",
+    "submit_era5_lai_low.sh",
+    "submit_agera5_relhum_min.sh"
+  )
+  for (wrapper in standalone_wrappers) {
+    wrapper_script <- paste(readLines(package_file("hpc", wrapper), warn = FALSE), collapse = "\n")
+    expect_match(wrapper_script, "run_era5_variable.slurm")
+    expect_match(wrapper_script, "submit_era5_variable.sh")
+  }
+  expect_match(script, "MODE=full DRY_RUN=false")
+  expect_false(grepl("MODE=process", script, fixed = TRUE))
+  expect_false(grepl("run_portfolio_era5_variable_daily.slurm", script, fixed = TRUE))
+  expect_identical(definition$source_workflows[[5]]$wrapper, "hpc/submit_era5land_daily_mean.sh")
+  expect_match(script, "run_era5land_daily_mean.slurm")
+  expect_match(script, "--execute")
+})
+
 test_that("portfolio updates do not request overwrite", {
-  scripts <- vapply(c("submit_all_products.sh", "run_portfolio_era5_variable_daily.slurm", "run_portfolio_aggregate_product.slurm", "run_portfolio_aggregate_era5land.slurm"), function(x) paste(readLines(package_file("hpc", x), warn = FALSE), collapse = "\n"), character(1))
+  scripts <- vapply(c("submit_all_products.sh", "run_portfolio_aggregate_product.slurm", "run_portfolio_aggregate_era5land.slurm"), function(x) paste(readLines(package_file("hpc", x), warn = FALSE), collapse = "\n"), character(1))
   expect_false(any(grepl("--overwrite", scripts, fixed = TRUE)))
 })
