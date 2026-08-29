@@ -105,6 +105,7 @@ case "$MODE" in
   process) SLURM_RUNNER="run_era5land_daily_mean_process.slurm";;
   *) SLURM_RUNNER="run_era5land_daily_mean.slurm";;
 esac
+SBATCH_SCRIPT="${SBATCH_SCRIPT:-$REPO_DIR/hpc/$SLURM_RUNNER}"
 
 if [[ -n "$START_DATE" || -n "$END_DATE" ]]; then
   cds_datagrab_validate_window
@@ -179,15 +180,15 @@ if [[ "$EXECUTION_MODE" == dry-run ]]; then
 fi
 
 mkdir -p "$CDS_DATAGRAB_ROOT/logs/slurm/$PROFILE"
-export REPO_DIR CONFIG PROFILE MODE DRY_RUN START_DATE END_DATE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB PRODUCT_IDS EXECUTION_MODE OVERWRITE REBUILD_ALL_WEEKS
+export REPO_DIR CONFIG PROFILE MODE DRY_RUN START_DATE END_DATE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB PRODUCT_IDS EXECUTION_MODE OVERWRITE REBUILD_ALL_WEEKS SBATCH_SCRIPT
 if [[ "${DIRECT_EXECUTION:-false}" == true ]]; then
-  exec bash "$REPO_DIR/hpc/$SLURM_RUNNER"
+  exec bash "$SBATCH_SCRIPT"
 fi
 
 job_id="$(sbatch --parsable \
   --job-name="cds_era5land_daily_mean_${MODE}" \
   --output="$CDS_DATAGRAB_ROOT/logs/slurm/$PROFILE/cds_era5land_daily_mean_%j.out" \
   --error="$CDS_DATAGRAB_ROOT/logs/slurm/$PROFILE/cds_era5land_daily_mean_%j.err" \
-  --export=ALL,REPO_DIR,CONFIG,PROFILE,MODE,DRY_RUN,START_DATE,END_DATE,CDS_DATAGRAB_ROOT,CDS_DATAGRAB_R_LIB,PRODUCT_IDS,EXECUTION_MODE,OVERWRITE,REBUILD_ALL_WEEKS \
-  "$REPO_DIR/hpc/$SLURM_RUNNER")"
+  --export=ALL,REPO_DIR,CONFIG,PROFILE,MODE,DRY_RUN,START_DATE,END_DATE,CDS_DATAGRAB_ROOT,CDS_DATAGRAB_R_LIB,PRODUCT_IDS,EXECUTION_MODE,OVERWRITE,REBUILD_ALL_WEEKS,SBATCH_SCRIPT \
+  "$SBATCH_SCRIPT")"
 printf 'submitted job ID: %s\nSlurm log path: %s/logs/slurm/%s/cds_era5land_daily_mean_%%j.{out,err}\n' "$job_id" "$CDS_DATAGRAB_ROOT" "$PROFILE"
