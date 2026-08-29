@@ -48,6 +48,22 @@ The ERA5-Land products are additive. They do not replace the four established st
 
 The ERA5-Land request always contains all eight variables, with `daily_statistic = daily_mean`, `time_zone = utc-06:00`, and `frequency = 1_hourly`. High- and low-vegetation LAI represent monthly variation without interannual variability, so consecutive daily labels may contain identical layers.
 
+## Updating all production products
+
+The portfolio operator command advances all 12 products under one common daily endpoint:
+
+```bash
+bash hpc/submit_all_products.sh --through latest-common --mode plan
+bash hpc/submit_all_products.sh --through latest-common --mode update
+bash hpc/submit_all_products.sh --through 2026-07-10 --mode update
+```
+
+`--through YYYY-MM-DD` requires every configured source workflow to support that date. `--through latest-common` uses the minimum locally configured `temporal.observed_end` across the five source workflows; it does not scrape CDS to infer availability. If availability is not locally known, planning fails conservatively. Plan mode contacts no CDS, submits no Slurm jobs, and does not modify production outputs. It reports source availability, projected product counts, the common endpoint, and the exact child commands.
+
+One operator command is not one CDS request: it submits four standalone source workflows and the shared ERA5-Land source family concurrently. After all five source jobs, five aggregation jobs run with an `afterok` dependency; final portfolio validation runs only after all aggregation jobs succeed. Valid daily/weekly artifacts are reused by existing child logic, and ordinary portfolio updates do not use `--overwrite`.
+
+Each update writes `runs/production/_portfolio/<run_id>/portfolio_manifest.json`, including source and aggregation job IDs, dependencies, common dates, per-product counts, validation status, and failure stage/message. A failed source or aggregation stage is safe to retry with a new portfolio run using the same external root; no valid TIFFs are deleted. This orchestration layer is not Atlas-validated until a real Atlas portfolio test has been completed.
+
 ## Production status
 
 The ERA5-Land daily-mean family has been successfully exercised on Atlas. The validated historical daily inventory contains 1,654 daily TIFFs per ERA5-Land product, 13,232 total, covering **2022-01-01 through 2026-07-12**. This is the current produced/observed endpoint.

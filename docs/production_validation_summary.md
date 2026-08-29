@@ -18,6 +18,17 @@ The configured horizon is retained in the production YAML, but dates after 2026-
 
 The eight outputs are additive to the established standalone products `era5_mintemp`, `era5_soilmoist`, `era5_lai_low`, and `agera5_relhum_min`. All ERA5-Land outputs use the shared `era5land_daily_mean_utc06` source family and one monthly `derived-era5-land-daily-statistics` request containing eight variables, with `daily_mean`, `utc-06:00`, and `1_hourly` request settings.
 
+## Portfolio orchestration status
+
+The thin portfolio orchestration layer is implemented but is not represented as Atlas-validated production evidence in this document. A real Atlas portfolio run must complete before the command is described as validated. The operator entry point is:
+
+```bash
+bash hpc/submit_all_products.sh --through latest-common --mode plan
+bash hpc/submit_all_products.sh --through latest-common --mode update
+```
+
+It submits five independent source workflows concurrently, then submits dependent weekly aggregation and final synchronization validation jobs. The parent manifest under `runs/production/_portfolio/<run_id>/` records the job IDs, common endpoint, complete ISO-week count, per-product coverage, and final status. Until that run is completed, the existing ERA5-Land daily-only Atlas evidence above remains distinct from portfolio-level validation.
+
 ## Restart and recovery validation
 
 Validated behavior includes:
