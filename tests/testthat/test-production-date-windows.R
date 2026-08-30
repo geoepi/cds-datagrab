@@ -54,3 +54,46 @@ test_that("explicit production date windows may advance beyond observed_end", {
   expect_identical(window$date_override_source, "explicit_override")
   expect_identical(as.character(cfg$temporal$observed_end), "2026-07-12")
 })
+
+test_that("standalone full planning stays inside an explicit partial-month window", {
+  for (dataset in c("era5_lai_low", "agera5_relhum_min")) {
+    root <- test_external_root(paste0("explicit-window-full-plan-", dataset))
+    result <- run_environmental_pipeline(package_file("config", paste0(dataset, "_production.yml")), mode="full", dry_run=TRUE,
+      start_date="2026-07-13", end_date="2026-07-26", output_root=root)
+    planned <- utils::read.csv(file.path(result$run_dir, "planned_dates.csv"), stringsAsFactors=FALSE)
+    requests <- jsonlite::read_json(file.path(result$run_dir, "request_manifest.json"), simplifyVector=FALSE)
+    summary <- jsonlite::read_json(file.path(result$run_dir, "production_planning_summary.json"), simplifyVector=TRUE)
+    expect_identical(result$pipeline_status, "success")
+    expect_identical(result$stage_results$plan$status, "success")
+    expect_equal(nrow(planned), 14L)
+    expect_true(all(planned$date >= "2026-07-13" & planned$date <= "2026-07-26"))
+    expect_length(requests, 1L)
+    request_dates <- unlist(lapply(requests, function(x) x$raw_request_dates), use.names=FALSE)
+    expect_true(all(request_dates >= "2026-07-13" & request_dates <= "2026-07-26"))
+    expect_identical(summary$plan_validation$status, "success")
+    expect_identical(summary$observed_end, "2026-07-12")
+    expect_identical(summary$effective_start, "2026-07-13")
+    expect_identical(summary$effective_end, "2026-07-26")
+    expect_length(result$planned_request_hashes, 1L)
+  }
+})
+
+test_that("explicit standalone windows handle one-day, month-boundary, and no-op cases", {
+  cfg <- read_pipeline_config(package_file("config", "era5_lai_low_production.yml"))
+  area <- c(43, -127, 42, -125)
+  one_day <- resolve_pipeline_date_window(cfg, "2026-07-13", "2026-07-13", FALSE)
+  one_day_requests <- build_variable_requests(safe_date_sequence(one_day$effective_start, one_day$effective_end), area, cfg, get_variable_spec("era5_lai_low"))
+  expect_length(one_day_requests, 1L)
+  expect_identical(one_day_requests[[1]]$raw_request_dates, "2026-07-13")
+
+  boundary <- as.Date(c("2026-06-29", "2026-07-03"))
+  boundary_requests <- build_variable_requests(safe_date_sequence(boundary[[1]], boundary[[2]]), area, cfg, get_variable_spec("era5_lai_low"))
+  expect_length(boundary_requests, 2L)
+  expect_true(all(unlist(lapply(boundary_requests, function(x) x$raw_request_dates), use.names=FALSE) >= "2026-06-29"))
+  expect_true(all(unlist(lapply(boundary_requests, function(x) x$raw_request_dates), use.names=FALSE) <= "2026-07-03"))
+
+  existing <- data.frame(valid=TRUE, estimated=FALSE, date=as.Date("2026-07-13") + 0:13)
+  no_op <- plan_observed_update(existing, "2026-07-13", "2026-07-26", overlap_days=0)
+  expect_identical(attr(no_op, "status"), "success_noop")
+  expect_length(no_op$date, 0L)
+})
