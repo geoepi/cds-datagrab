@@ -45,3 +45,12 @@ test_that("date overrides cannot expand the canonical range or execute across ye
   Sys.unsetenv("ALLOW_MULTIYEAR")
   expect_error(run_environmental_pipeline(package_file("config", "era5_lai_low_production.yml"), mode="full", dry_run=FALSE, start_date="2022-01-01", end_date="2023-12-31", output_root=test_external_root("multiyear-guard")), "production execution spans multiple calendar years")
 })
+
+test_that("explicit production date windows may advance beyond observed_end", {
+  cfg <- read_pipeline_config(package_file("config", "era5_lai_low_production.yml"))
+  window <- resolve_pipeline_date_window(cfg, "2026-07-01", "2026-07-26", FALSE)
+  expect_identical(as.character(window$observed_end), "2026-07-12")
+  expect_identical(as.character(window$effective_end), "2026-07-26")
+  expect_identical(window$date_override_source, "explicit_override")
+  expect_identical(as.character(cfg$temporal$observed_end), "2026-07-12")
+})

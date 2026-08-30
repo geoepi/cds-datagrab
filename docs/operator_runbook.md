@@ -53,7 +53,12 @@ bash hpc/submit_all_products.sh --through latest-common --mode update
 bash hpc/submit_all_products.sh --through 2026-07-10 --mode update
 ```
 
-The portfolio definition is `config/production_portfolio.yml`. It expands five logical source workflows to exactly 12 products. `latest-common` takes the minimum configured local `temporal.observed_end`; it does not query or scrape CDS. An explicit date fails planning if any source cannot support it. The first update plan audits existing daily filenames and uses the earliest missing date needed by the portfolio, while child pipelines retain their normal reuse and provenance behavior.
+The portfolio definition is `config/production_portfolio.yml`. It expands five logical source workflows to exactly 12 products. Endpoint policy is explicit:
+
+- `--through latest-common` is conservative and resolves to the minimum locally configured `temporal.observed_end`. It does not query or scrape CDS, and requires every source endpoint to be known locally.
+- `--through YYYY-MM-DD` is an operator-requested target. It must be a valid ISO date within every source workflow's configured hard temporal horizon, but it may extend beyond the currently known `temporal.observed_end`. Such source availability is reported as `unverified explicit target` until the source workflow runs; the source workflow remains authoritative and may fail normally if CDS cannot supply the date.
+
+The planner never edits `temporal.observed_end` or treats an explicit future target as confirmed. The first update plan audits existing daily filenames and uses the earliest missing date needed by the portfolio, while child pipelines retain their normal reuse and provenance behavior.
 
 The five source jobs are submitted concurrently. Each standalone job uses its existing full wrapper interface (`MODE=full DRY_RUN=false`), which plans, acquires missing source data, processes missing daily outputs, and reuses valid outputs. The ERA5-Land job uses its existing `--execute` path. Weekly aggregation is submitted only with `afterok:<all five source job IDs>` and uses the exact same common start/end dates. Four standalone aggregation jobs and one ERA5-Land aggregate-only family job then run concurrently. Portfolio validation depends on all aggregation jobs and checks synchronized daily dates, complete ISO weeks, raster geometry, sidecars/provenance, value ranges, and ERA5-Land support-mask behavior.
 

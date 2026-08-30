@@ -28,15 +28,20 @@ cat("PLAN_STATUS=planned\n")
 cat("PORTFOLIO=production\n")
 cat("PRODUCT_COUNT=", length(plan$product_ids), "\n", sep = "")
 cat("SOURCE_WORKFLOW_COUNT=", length(plan$source_workflow_ids), "\n", sep = "")
+cat("ENDPOINT_POLICY=", plan$endpoint_policy, "\n", sep = "")
 cat("REQUESTED_THROUGH=", plan$requested_through, "\n", sep = "")
+cat("REQUESTED_END=", if (is.null(plan$requested_end)) "" else plan$requested_end, "\n", sep = "")
+cat("EFFECTIVE_REQUESTED_END=", plan$effective_requested_end, "\n", sep = "")
 cat("COMMON_START=", plan$common_start, "\n", sep = "")
 cat("COMMON_END=", plan$common_end, "\n", sep = "")
 cat("COMPLETE_ISO_WEEK_COUNT=", length(plan$complete_iso_weeks), "\n", sep = "")
 cat("COMPLETE_ISO_WEEKS=", paste(plan$complete_iso_weeks, collapse = ","), "\n", sep = "")
 for (i in seq_len(nrow(plan$availability))) {
   row <- plan$availability[i, ]
-  cat("AVAILABILITY|", row$source_workflow, "|", if (is.na(row$available_through)) "uncertain" else row$available_through,
-    "|", row$availability_source, "\n", sep = "")
+  cat("AVAILABILITY|", row$source_workflow,
+    "|known/observed through: ", if (is.na(row$known_observed_end)) "unknown" else row$known_observed_end,
+    "|requested through: ", plan$effective_requested_end,
+    "|availability status: ", row$availability_status, "\n", sep = "")
 }
 for (source in plan$source_workflows) {
   source_config <- if (grepl("^([A-Za-z]:[\\\\/]|/)", source$config)) source$config else file.path(repo_root, source$config)

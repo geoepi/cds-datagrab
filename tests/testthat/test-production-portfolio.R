@@ -16,13 +16,24 @@ test_that("latest-common uses the minimum configured source endpoint", {
   expect_length(plan$availability$source_workflow, 5)
 })
 
-test_that("explicit endpoint is resolved identically for all source children", {
+test_that("explicit endpoint beyond observed_end is allowed within hard horizons", {
   definition <- portfolio_read_definition(package_file("config", "production_portfolio.yml"))
   attr(definition, "config_path") <- package_file("config", "production_portfolio.yml")
-  plan <- portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-10")
-  expect_identical(plan$common_end, "2026-07-10")
-  expect_true(all(vapply(plan$source_workflows, function(x) plan$common_end == "2026-07-10", logical(1))))
-  expect_error(portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-13"), "unsupported")
+  plan <- portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-26")
+  expect_identical(plan$endpoint_policy, "explicit")
+  expect_identical(plan$requested_end, "2026-07-26")
+  expect_identical(plan$effective_requested_end, "2026-07-26")
+  expect_identical(plan$common_end, "2026-07-26")
+  expect_true(all(plan$availability$known_observed_end == "2026-07-12"))
+  expect_true(all(plan$availability$availability_status == "unverified explicit target"))
+  expect_error(portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2027-01-01"), "hard temporal horizon")
+})
+
+test_that("explicit endpoint validation is strict and does not use observed_end as a ceiling", {
+  definition <- portfolio_read_definition(package_file("config", "production_portfolio.yml"))
+  attr(definition, "config_path") <- package_file("config", "production_portfolio.yml")
+  expect_error(portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-02-30"), "ISO")
+  expect_error(portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-7-26"), "ISO")
 })
 
 test_that("a lagging configured source constrains latest-common", {
@@ -62,6 +73,43 @@ test_that("portfolio wrapper exposes read-only plan and dependency structure", {
   expect_match(script, "--dependency=\\\"\\$dependency\\\"")
   expect_match(script, "afterok:")
   expect_match(script, "run_portfolio_validate.slurm")
+  expect_true(grepl('validation_job="$(sbatch --parsable --dependency="$aggregation_dependency"', script, fixed = TRUE))
+})
+
+test_that("explicit plan provenance distinguishes known and requested endpoints", {
+  definition <- portfolio_read_definition(package_file("config", "production_portfolio.yml"))
+  attr(definition, "config_path") <- package_file("config", "production_portfolio.yml")
+  latest <- portfolio_resolve_plan(definition, through = "latest-common")
+  explicit <- portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-26")
+  expect_identical(latest$common_end, "2026-07-12")
+  expect_identical(latest$endpoint_policy, "latest-common")
+  expect_identical(latest$effective_requested_end, "2026-07-12")
+  expect_identical(explicit$common_end, "2026-07-26")
+  expect_true(all(explicit$availability$known_observed_end < explicit$effective_requested_end))
+  expect_true(all(explicit$availability$availability_status == "unverified explicit target"))
+})
+
+test_that("portfolio planning is side-effect free", {
+  definition_path <- package_file("config", "production_portfolio.yml")
+  definition <- portfolio_read_definition(definition_path)
+  attr(definition, "config_path") <- definition_path
+  before <- unname(tools::md5sum(definition_path))
+  plan <- portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-26")
+  expect_identical(plan$common_end, "2026-07-26")
+  expect_identical(unname(tools::md5sum(definition_path)), before)
+})
+
+test_that("portfolio manifest records explicit endpoint provenance and source outcomes", {
+  definition <- portfolio_read_definition(package_file("config", "production_portfolio.yml"))
+  attr(definition, "config_path") <- package_file("config", "production_portfolio.yml")
+  plan <- portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-26")
+  manifest <- portfolio_new_manifest(plan, withr::local_tempdir(), run_id = "test_portfolio")
+  expect_identical(manifest$endpoint_policy, "explicit")
+  expect_identical(manifest$requested_end, "2026-07-26")
+  expect_identical(manifest$effective_requested_end, "2026-07-26")
+  expect_identical(manifest$known_observed_end$era5_mintemp, "2026-07-12")
+  expect_identical(manifest$availability_status$era5_mintemp, "unverified explicit target")
+  expect_true("source_job_outcomes" %in% names(manifest))
 })
 
 test_that("portfolio source commands use each wrapper's full execution path", {

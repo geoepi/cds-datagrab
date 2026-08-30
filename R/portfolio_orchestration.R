@@ -1,5 +1,34 @@
 .portfolio_null_coalesce <- function(x, y) if (is.null(x)) y else x
 
+.portfolio_iso_date <- function(x, field = "date") {
+  if (inherits(x, "Date") && length(x) == 1L && !is.na(x)) x <- format(x, "%Y-%m-%d")
+  if (length(x) != 1L || is.na(x) || !is.character(x) ||
+      !grepl("^[0-9]{4}-[0-9]{2}-[0-9]{2}$", x)) {
+    stop(field, " must be an ISO YYYY-MM-DD date", call. = FALSE)
+  }
+  value <- as.Date(x, format = "%Y-%m-%d")
+  if (is.na(value) || !identical(format(value, "%Y-%m-%d"), x)) {
+    stop(field, " must be an ISO YYYY-MM-DD date", call. = FALSE)
+  }
+  value
+}
+
+.portfolio_availability_field <- function(availability, field) {
+  if (is.data.frame(availability)) return(as.character(availability[[field]]))
+  rows <- availability %||% list()
+  if (!length(rows)) return(character())
+  vapply(rows, function(row) {
+    value <- row[[field]]
+    if (is.null(value) || !length(value) || is.na(value[[1L]])) NA_character_ else as.character(value[[1L]])
+  }, character(1))
+}
+
+.portfolio_availability_names <- function(availability) {
+  if (is.data.frame(availability)) return(as.character(availability$source_workflow))
+  rows <- availability %||% list()
+  vapply(rows, function(row) as.character(row$source_workflow[[1L]]), character(1))
+}
+
 portfolio_source_workflow_ids <- function() c(
   "era5_mintemp", "era5_soilmoist", "era5_lai_low",
   "agera5_relhum_min", "era5land_daily_mean_utc06"
@@ -34,13 +63,24 @@ portfolio_read_source_availability <- function(definition, repo_root = dirname(d
     path <- workflow$config
     if (!grepl("^([A-Za-z]:[\\\\/]|/)", path)) path <- file.path(repo_root, path)
     cfg <- tryCatch(yaml::read_yaml(path), error = function(e) NULL)
-    observed <- cfg$temporal$observed_end %||% NA_character_
+    temporal <- cfg$temporal %||% list()
+    # observed_end records the latest known/validated endpoint in local
+    # production provenance; it is not an absolute source-availability limit.
+    observed <- temporal$observed_end %||% NA_character_
     known <- !is.null(observed) && length(observed) == 1L && !is.na(observed) && !identical(tolower(as.character(observed)), "auto")
     date <- if (known) tryCatch(as.Date(as.character(observed)), error = function(e) as.Date(NA)) else as.Date(NA)
     if (length(date) != 1L || is.na(date)) known <- FALSE
+    configured_start <- tryCatch(as.Date(temporal$configured_start_date %||% temporal$initial_start_date), error = function(e) as.Date(NA))
+    configured_end <- tryCatch(as.Date(temporal$configured_end_date %||% temporal$future_end_date %||% temporal$observed_end), error = function(e) as.Date(NA))
     data.frame(source_workflow = workflow$id, config = path,
+      known_observed_end = if (known) as.character(date) else NA_character_,
+      configured_start = if (!is.na(configured_start)) as.character(configured_start) else NA_character_,
+      configured_end = if (!is.na(configured_end)) as.character(configured_end) else NA_character_,
+      hard_temporal_end = if (!is.na(configured_end)) as.character(configured_end) else NA_character_,
       available_through = if (known) as.character(date) else NA_character_,
       availability_known = known,
+      requested_end = NA_character_, effective_requested_end = NA_character_,
+      availability_status = if (known) "known configured observed endpoint" else "unverified (no local endpoint metadata)",
       availability_source = if (known) "configured temporal observed_end" else "uncertain (no local endpoint metadata)",
       stringsAsFactors = FALSE)
   })
@@ -95,14 +135,33 @@ portfolio_resolve_plan <- function(definition, through = c("latest-common", "exp
   through <- match.arg(through)
   availability <- portfolio_read_source_availability(definition, repo_root)
   if (through == "explicit") {
-    end <- as.Date(explicit_end)
-    if (is.na(end)) stop("Explicit portfolio endpoint must be an ISO YYYY-MM-DD date", call. = FALSE)
-    unsupported <- availability$source_workflow[!availability$availability_known | availability$available_through < as.character(end)]
-    if (length(unsupported)) stop("Requested endpoint is unsupported or uncertain for source workflow(s): ", paste(unsupported, collapse = ", "), call. = FALSE)
+    end <- .portfolio_iso_date(explicit_end, "Explicit portfolio endpoint")
+    outside_horizon <- availability$source_workflow[
+      is.na(availability$configured_start) |
+        is.na(availability$hard_temporal_end) |
+        end < as.Date(availability$configured_start) |
+        end > as.Date(availability$hard_temporal_end)
+    ]
+    if (length(outside_horizon)) {
+      details <- vapply(outside_horizon, function(source) {
+        row <- availability[availability$source_workflow == source, , drop = FALSE]
+        horizon <- if (is.na(row$hard_temporal_end[[1L]])) "unknown" else row$hard_temporal_end[[1L]]
+        paste0(source, " (hard horizon through ", horizon, ")")
+      }, character(1))
+      stop("Requested endpoint is outside the configured hard temporal horizon for source workflow(s): ",
+        paste(details, collapse = ", "), call. = FALSE)
+    }
+    availability$availability_status <- ifelse(
+      availability$availability_known & as.Date(availability$known_observed_end) >= end,
+      "known configured endpoint covers explicit target",
+      "unverified explicit target")
   } else {
     if (any(!availability$availability_known)) stop("latest-common cannot be resolved conservatively; availability is uncertain for: ", paste(availability$source_workflow[!availability$availability_known], collapse = ", "), call. = FALSE)
     end <- min(as.Date(availability$available_through))
+    availability$availability_status <- "known configured observed endpoint"
   }
+  availability$requested_end <- as.character(end)
+  availability$effective_requested_end <- as.character(end)
   start <- portfolio_resolve_common_start(definition, end, output_root, repo_root)
   if (start > end) start <- end
   weeks <- portfolio_complete_iso_weeks(start, end)
@@ -116,8 +175,11 @@ portfolio_resolve_plan <- function(definition, through = c("latest-common", "exp
       weekly_expected = length(weeks), weekly_present = sum(weekly$weeks %in% weeks),
       daily_dates = as.character(daily$dates), weekly_ids = weekly$weeks)
   }))
-  list(status = "planned", requested_through = if (through == "explicit") as.character(end) else "latest-common",
+  list(status = "planned", endpoint_policy = through,
+    requested_through = if (through == "explicit") as.character(end) else "latest-common",
+    requested_end = if (through == "explicit") as.character(end) else NULL,
     requested_explicit_end = if (through == "explicit") as.character(end) else NULL,
+    effective_requested_end = as.character(end),
     common_start = as.character(start), common_end = as.character(end), complete_iso_weeks = weeks,
     availability = availability, products = unlist(products, recursive = FALSE), source_workflows = definition$source_workflows,
     source_workflow_ids = definition$source_workflow_ids, product_ids = definition$product_ids)
@@ -204,13 +266,20 @@ portfolio_manifest_path <- function(output_root, run_id) file.path(output_root, 
 
 portfolio_new_manifest <- function(plan, output_root, run_id = NULL, source_commit = "unavailable", installed_commit = "unavailable") {
   if (is.null(run_id)) run_id <- paste0(format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"), "_portfolio")
+  availability_names <- .portfolio_availability_names(plan$availability)
+  known_observed_end <- .portfolio_availability_field(plan$availability, "known_observed_end")
+  availability_status <- .portfolio_availability_field(plan$availability, "availability_status")
   list(run_id = run_id, started_at = format(Sys.time(), tz = "UTC", usetz = TRUE), completed_at = NULL,
     source_git_commit = source_commit, installed_git_commit = installed_commit, profile = "production", output_root = output_root,
-    requested_through = plan$requested_through, requested_explicit_end = plan$requested_explicit_end,
+    endpoint_policy = plan$endpoint_policy, requested_through = plan$requested_through,
+    requested_end = plan$requested_end, requested_explicit_end = plan$requested_explicit_end,
+    effective_requested_end = plan$effective_requested_end,
+    known_observed_end = setNames(as.list(known_observed_end), availability_names),
+    availability_status = setNames(as.list(availability_status), availability_names),
     common_daily_start = plan$common_start, common_daily_end = plan$common_end, complete_iso_week_count = length(plan$complete_iso_weeks),
     source_workflow_ids = plan$source_workflow_ids, product_ids = plan$product_ids, source_workflows = plan$source_workflows,
     products = plan$products, manifest_directory = file.path(output_root, "runs", "production", "_portfolio", run_id), source_job_ids = list(), aggregation_job_ids = list(), validation_job_id = NULL,
-    dependencies = list(), status = "planned", failure_stage = NULL, failure_message = NULL, plan = plan)
+    source_job_outcomes = list(), dependencies = list(), status = "planned", failure_stage = NULL, failure_message = NULL, plan = plan)
 }
 
 portfolio_write_manifest <- function(manifest, path = file.path(manifest$manifest_directory, "portfolio_manifest.json")) {

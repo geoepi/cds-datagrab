@@ -44,6 +44,9 @@ if (length(source_jobs)) manifest$source_job_ids <- source_jobs
 if (length(aggregation_jobs)) manifest$aggregation_job_ids <- aggregation_jobs
 if (!is.null(validation_job)) manifest$validation_job_id <- validation_job
 if (length(source_jobs)) {
+  manifest$source_job_outcomes <- setNames(lapply(names(source_jobs), function(name) {
+    list(job_id = unname(source_jobs[[name]]), status = "submitted")
+  }), names(source_jobs))
   manifest$dependencies$aggregation <- paste0("afterok:", paste(unlist(source_jobs, use.names = FALSE), collapse = ":"))
   manifest$status <- if (is.null(status)) "source_running" else status
 }

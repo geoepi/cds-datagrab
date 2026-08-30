@@ -46,7 +46,7 @@ Products: $PRODUCT_COUNT
 Source workflows: $SOURCE_COUNT
 Requested through: $THROUGH
 SUMMARY
-awk -F'|' '$1 == "AVAILABILITY" { printf "  %-30s available through %s (%s)\n", $2, $3, $4 }' "$PLAN_OUTPUT"
+awk -F'|' '$1 == "AVAILABILITY" { printf "  %s\n", $2 ": " $3 "; " $4 "; " $5 }' "$PLAN_OUTPUT"
 printf 'Common endpoint: %s through %s\nComplete ISO weeks: %s\n' "$COMMON_START" "$COMMON_END" "$WEEK_COUNT"
 awk -F'|' '$1 == "PRODUCT" { printf "  %-36s daily %s/%s weekly %s/%s\n", $2, $5, $4, $7, $6 }' "$PLAN_OUTPUT"
 
