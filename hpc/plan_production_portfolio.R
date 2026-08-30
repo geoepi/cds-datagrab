@@ -34,6 +34,12 @@ cat("REQUESTED_END=", if (is.null(plan$requested_end)) "" else plan$requested_en
 cat("EFFECTIVE_REQUESTED_END=", plan$effective_requested_end, "\n", sep = "")
 cat("COMMON_START=", plan$common_start, "\n", sep = "")
 cat("COMMON_END=", plan$common_end, "\n", sep = "")
+cat("INCREMENTAL_WORK_START=", plan$incremental_work_start, "\n", sep = "")
+cat("INCREMENTAL_WORK_END=", plan$incremental_work_end, "\n", sep = "")
+cat("PORTFOLIO_INVENTORY_START=", plan$portfolio_inventory_start, "\n", sep = "")
+cat("PORTFOLIO_INVENTORY_END=", plan$portfolio_inventory_end, "\n", sep = "")
+cat("INCREMENTAL_COMPLETE_ISO_WEEK_COUNT=", plan$incremental_complete_iso_week_count, "\n", sep = "")
+cat("CUMULATIVE_COMPLETE_ISO_WEEK_COUNT=", plan$cumulative_complete_iso_week_count, "\n", sep = "")
 cat("COMPLETE_ISO_WEEK_COUNT=", length(plan$complete_iso_weeks), "\n", sep = "")
 cat("COMPLETE_ISO_WEEKS=", paste(plan$complete_iso_weeks, collapse = ","), "\n", sep = "")
 for (i in seq_len(nrow(plan$availability))) {

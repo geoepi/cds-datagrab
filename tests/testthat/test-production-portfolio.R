@@ -24,6 +24,11 @@ test_that("explicit endpoint beyond observed_end is allowed within hard horizons
   expect_identical(plan$requested_end, "2026-07-26")
   expect_identical(plan$effective_requested_end, "2026-07-26")
   expect_identical(plan$common_end, "2026-07-26")
+  expect_identical(plan$incremental_work_end, "2026-07-26")
+  expect_identical(plan$portfolio_inventory_start, "2022-01-01")
+  expect_identical(plan$portfolio_inventory_end, "2026-07-26")
+  expect_equal(plan$incremental_complete_iso_week_count, length(plan$complete_iso_weeks))
+  expect_equal(plan$cumulative_complete_iso_week_count, length(plan$cumulative_complete_iso_weeks))
   expect_true(all(plan$availability$known_observed_end == "2026-07-12"))
   expect_true(all(plan$availability$availability_status == "unverified explicit target"))
   expect_error(portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2027-01-01"), "hard temporal horizon")
@@ -62,6 +67,46 @@ test_that("portfolio synchronization reports missing and extra daily dates and w
   expect_identical(result$status, "failed")
   expect_true(all(vapply(result$products, function(x) "2026-07-11" %in% x$daily_missing, logical(1))))
   expect_true(all(vapply(result$products, function(x) "2026-W29" %in% x$weekly_extra, logical(1))))
+})
+
+test_that("portfolio synchronization validates cumulative inventory separately from incremental work", {
+  inventory_start <- as.Date("2022-01-01")
+  inventory_end <- as.Date("2026-07-26")
+  daily <- safe_date_sequence(inventory_start, inventory_end)
+  weeks <- portfolio_complete_iso_weeks(inventory_start, inventory_end)
+  records <- lapply(portfolio_product_ids(), function(id) list(product_id=id,
+    daily_dates=as.character(daily), weekly_ids=weeks))
+  result <- portfolio_validate_synchronization(records, "2026-07-13", "2026-07-26", inventory_start, inventory_end)
+  expect_identical(result$status, "success")
+  expect_identical(result$incremental_work_start, "2026-07-13")
+  expect_identical(result$portfolio_inventory_start, "2022-01-01")
+  expect_identical(result$portfolio_inventory_end, "2026-07-26")
+  expect_equal(result$complete_iso_week_count, length(weeks))
+  expect_true(all(vapply(result$products, function(x) length(x$daily_extra) == 0L && length(x$weekly_extra) == 0L, logical(1))))
+  expect_true(all(vapply(result$products, function(x) x$incremental_daily_present == 14L, logical(1))))
+})
+
+test_that("portfolio cumulative validation reports only true extras and historical gaps", {
+  inventory_start <- as.Date("2022-01-01")
+  inventory_end <- as.Date("2026-07-26")
+  daily <- safe_date_sequence(inventory_start, inventory_end)
+  weeks <- portfolio_complete_iso_weeks(inventory_start, inventory_end)
+  base_records <- function(dates=daily, week_ids=weeks) lapply(portfolio_product_ids(), function(id) list(product_id=id,
+    daily_dates=as.character(dates), weekly_ids=week_ids))
+
+  extra <- portfolio_validate_synchronization(base_records(c(daily, as.Date("2026-07-27"))), "2026-07-13", "2026-07-26", inventory_start, inventory_end)
+  expect_identical(extra$status, "failed")
+  expect_true(all(vapply(extra$products, function(x) identical(x$daily_extra, "2026-07-27"), logical(1))))
+
+  missing_day <- portfolio_validate_synchronization(base_records(daily[-match(as.Date("2022-05-10"), daily)]), "2026-07-13", "2026-07-26", inventory_start, inventory_end)
+  expect_identical(missing_day$status, "failed")
+  expect_true(all(vapply(missing_day$products, function(x) identical(x$daily_missing, "2022-05-10"), logical(1))))
+  expect_true(all(vapply(missing_day$products, function(x) length(x$daily_extra) == 0L, logical(1))))
+
+  missing_week <- portfolio_validate_synchronization(base_records(daily, weeks[-1L]), "2026-07-13", "2026-07-26", inventory_start, inventory_end)
+  expect_identical(missing_week$status, "failed")
+  expect_true(all(vapply(missing_week$products, function(x) length(x$weekly_missing) == 1L, logical(1))))
+  expect_true(all(vapply(missing_week$products, function(x) length(x$weekly_extra) == 0L, logical(1))))
 })
 
 test_that("portfolio wrapper exposes read-only plan and dependency structure", {
@@ -109,6 +154,9 @@ test_that("portfolio manifest records explicit endpoint provenance and source ou
   expect_identical(manifest$effective_requested_end, "2026-07-26")
   expect_identical(manifest$known_observed_end$era5_mintemp, "2026-07-12")
   expect_identical(manifest$availability_status$era5_mintemp, "unverified explicit target")
+  expect_identical(manifest$incremental_work_start, "2022-01-01")
+  expect_identical(manifest$portfolio_inventory_start, "2022-01-01")
+  expect_identical(manifest$portfolio_inventory_end, "2026-07-26")
   expect_true("source_job_outcomes" %in% names(manifest))
 })
 

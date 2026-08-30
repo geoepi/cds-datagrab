@@ -94,6 +94,19 @@ portfolio_complete_iso_weeks <- function(start_date, end_date) {
   names(groups)[vapply(groups, function(x) length(x) == 7L && min(x) >= as.Date(start_date) && max(x) <= as.Date(end_date), logical(1))]
 }
 
+portfolio_configured_inventory_start <- function(definition,
+                                                  repo_root = dirname(dirname(attr(definition, "config_path") %||% "config/production_portfolio.yml"))) {
+  starts <- vapply(definition$source_workflows, function(workflow) {
+    path <- workflow$config
+    if (!grepl("^([A-Za-z]:[\\\\/]|/)", path)) path <- file.path(repo_root, path)
+    cfg <- yaml::read_yaml(path)
+    as.character(as.Date(cfg$temporal$configured_start_date %||% cfg$temporal$initial_start_date))
+  }, character(1))
+  starts <- as.Date(starts)
+  if (anyNA(starts)) stop("Every portfolio source workflow must define a configured production start", call. = FALSE)
+  max(starts)
+}
+
 portfolio_daily_files <- function(root, profile, product, prefix) {
   directory <- file.path(root, "data", profile, product, "daily")
   if (!dir.exists(directory)) return(list(dates = as.Date(character()), paths = character(), records = data.frame()))
@@ -164,7 +177,10 @@ portfolio_resolve_plan <- function(definition, through = c("latest-common", "exp
   availability$effective_requested_end <- as.character(end)
   start <- portfolio_resolve_common_start(definition, end, output_root, repo_root)
   if (start > end) start <- end
-  weeks <- portfolio_complete_iso_weeks(start, end)
+  inventory_start <- portfolio_configured_inventory_start(definition, repo_root)
+  if (inventory_start > end) inventory_start <- end
+  incremental_weeks <- portfolio_complete_iso_weeks(start, end)
+  cumulative_weeks <- portfolio_complete_iso_weeks(inventory_start, end)
   products <- lapply(definition$source_workflows, function(workflow) lapply(workflow$products, function(product) {
     path <- workflow$config; if (!grepl("^([A-Za-z]:[\\\\/]|/)", path)) path <- file.path(repo_root, path)
     cfg <- yaml::read_yaml(path); spec <- get_variable_spec(product)
@@ -172,7 +188,17 @@ portfolio_resolve_plan <- function(definition, through = c("latest-common", "exp
     weekly <- if (is.null(output_root)) list(weeks = character()) else portfolio_weekly_files(output_root, cfg$project$profile %||% "production", product, spec$weekly_filename_prefix)
     list(product_id = product, source_workflow = workflow$id, config = path,
       daily_expected = length(safe_date_sequence(start, end)), daily_present = sum(daily$dates >= start & daily$dates <= end),
-      weekly_expected = length(weeks), weekly_present = sum(weekly$weeks %in% weeks),
+      weekly_expected = length(incremental_weeks), weekly_present = sum(weekly$weeks %in% incremental_weeks),
+      incremental_daily_expected = length(safe_date_sequence(start, end)),
+      incremental_daily_present = sum(daily$dates >= start & daily$dates <= end),
+      incremental_weekly_expected = length(incremental_weeks),
+      incremental_weekly_present = sum(weekly$weeks %in% incremental_weeks),
+      portfolio_inventory_start = as.character(inventory_start),
+      portfolio_inventory_end = as.character(end),
+      cumulative_daily_expected = length(safe_date_sequence(inventory_start, end)),
+      cumulative_daily_present = sum(daily$dates >= inventory_start & daily$dates <= end),
+      cumulative_weekly_expected = length(cumulative_weeks),
+      cumulative_weekly_present = sum(weekly$weeks %in% cumulative_weeks),
       daily_dates = as.character(daily$dates), weekly_ids = weekly$weeks)
   }))
   list(status = "planned", endpoint_policy = through,
@@ -180,24 +206,50 @@ portfolio_resolve_plan <- function(definition, through = c("latest-common", "exp
     requested_end = if (through == "explicit") as.character(end) else NULL,
     requested_explicit_end = if (through == "explicit") as.character(end) else NULL,
     effective_requested_end = as.character(end),
-    common_start = as.character(start), common_end = as.character(end), complete_iso_weeks = weeks,
+    common_start = as.character(start), common_end = as.character(end), complete_iso_weeks = incremental_weeks,
+    incremental_work_start = as.character(start), incremental_work_end = as.character(end),
+    incremental_complete_iso_week_count = length(incremental_weeks),
+    portfolio_inventory_start = as.character(inventory_start), portfolio_inventory_end = as.character(end),
+    cumulative_complete_iso_week_count = length(cumulative_weeks), cumulative_complete_iso_weeks = cumulative_weeks,
     availability = availability, products = unlist(products, recursive = FALSE), source_workflows = definition$source_workflows,
     source_workflow_ids = definition$source_workflow_ids, product_ids = definition$product_ids)
 }
 
-portfolio_validate_synchronization <- function(products, common_start, common_end) {
-  expected_daily <- safe_date_sequence(as.Date(common_start), as.Date(common_end))
-  expected_weekly <- portfolio_complete_iso_weeks(common_start, common_end)
+portfolio_validate_synchronization <- function(products, common_start, common_end,
+                                               inventory_start = NULL, inventory_end = NULL) {
+  inventory_start <- as.Date(inventory_start %||% common_start)
+  inventory_end <- as.Date(inventory_end %||% common_end)
+  expected_daily <- safe_date_sequence(inventory_start, inventory_end)
+  expected_weekly <- portfolio_complete_iso_weeks(inventory_start, inventory_end)
+  incremental_daily <- safe_date_sequence(as.Date(common_start), as.Date(common_end))
+  incremental_weekly <- portfolio_complete_iso_weeks(common_start, common_end)
   rows <- lapply(products, function(product) {
     present_daily <- sort(unique(as.Date(product$daily_dates %||% character())))
     present_weekly <- sort(unique(as.character(product$weekly_ids %||% character())))
     missing_daily <- setdiff(expected_daily, present_daily); extra_daily <- setdiff(present_daily, expected_daily)
     missing_weekly <- setdiff(expected_weekly, present_weekly); extra_weekly <- setdiff(present_weekly, expected_weekly)
     ok <- sum(length(missing_daily), length(extra_daily), length(missing_weekly), length(extra_weekly)) == 0L && isTRUE(product$geometry_valid %||% TRUE) && isTRUE(product$sidecars_valid %||% TRUE) && isTRUE(product$value_validation_valid %||% TRUE)
-    list(product_id = product$product_id, daily_expected = length(expected_daily), daily_present = sum(present_daily %in% expected_daily), daily_missing = as.character(missing_daily), daily_extra = as.character(extra_daily), weekly_expected = length(expected_weekly), weekly_present = sum(present_weekly %in% expected_weekly), weekly_missing = missing_weekly, weekly_extra = extra_weekly, status = if (ok) "success" else "failed")
+    list(product_id = product$product_id,
+      daily_expected = length(expected_daily), daily_present = sum(present_daily %in% expected_daily),
+      daily_missing = as.character(missing_daily), daily_extra = as.character(extra_daily),
+      weekly_expected = length(expected_weekly), weekly_present = sum(present_weekly %in% expected_weekly),
+      weekly_missing = missing_weekly, weekly_extra = extra_weekly,
+      incremental_daily_expected = length(incremental_daily),
+      incremental_daily_present = sum(present_daily %in% incremental_daily),
+      incremental_weekly_expected = length(incremental_weekly),
+      incremental_weekly_present = sum(present_weekly %in% incremental_weekly),
+      status = if (ok) "success" else "failed")
   })
   names(rows) <- vapply(products, function(x) x$product_id, character(1))
-  list(common_daily_start = as.character(common_start), common_daily_end = as.character(common_end), complete_iso_week_count = length(expected_weekly), expected_daily_dates = as.character(expected_daily), expected_iso_weeks = expected_weekly, products = rows, status = if (all(vapply(rows, function(x) identical(x$status, "success"), logical(1)))) "success" else "failed")
+  list(common_daily_start = as.character(common_start), common_daily_end = as.character(common_end),
+    incremental_work_start = as.character(common_start), incremental_work_end = as.character(common_end),
+    portfolio_inventory_start = as.character(inventory_start), portfolio_inventory_end = as.character(inventory_end),
+    complete_iso_week_count = length(expected_weekly),
+    incremental_complete_iso_week_count = length(incremental_weekly),
+    cumulative_complete_iso_week_count = length(expected_weekly),
+    expected_daily_dates = as.character(expected_daily), expected_iso_weeks = expected_weekly,
+    products = rows,
+    status = if (all(vapply(rows, function(x) identical(x$status, "success"), logical(1)))) "success" else "failed")
 }
 
 portfolio_validate_output_root <- function(plan, output_root,
@@ -214,8 +266,12 @@ portfolio_validate_output_root <- function(plan, output_root,
     profile <- as.character(cfg$project$profile %||% "production")
     daily <- portfolio_daily_files(output_root, profile, product$product_id, spec$daily_filename_prefix)
     weekly <- portfolio_weekly_files(output_root, profile, product$product_id, spec$weekly_filename_prefix)
-    expected_daily <- safe_date_sequence(as.Date(plan$common_start), as.Date(plan$common_end))
-    expected_weeks <- plan$complete_iso_weeks
+    work_start <- as.Date(plan$incremental_work_start %||% plan$common_start)
+    work_end <- as.Date(plan$incremental_work_end %||% plan$common_end)
+    inventory_start <- as.Date(plan$portfolio_inventory_start %||% plan$common_start)
+    inventory_end <- as.Date(plan$portfolio_inventory_end %||% plan$common_end)
+    expected_daily <- safe_date_sequence(inventory_start, inventory_end)
+    expected_weeks <- plan$cumulative_complete_iso_weeks %||% portfolio_complete_iso_weeks(inventory_start, inventory_end)
     sidecar_ok <- function(paths, expected) {
       if (!length(paths)) return(!length(expected))
       all(vapply(paths, function(path) {
@@ -224,7 +280,7 @@ portfolio_validate_output_root <- function(plan, output_root,
         !is.null(tryCatch(jsonlite::read_json(sidecar, simplifyVector = FALSE), error = function(e) NULL))
       }, logical(1)))
     }
-    daily_in_range <- daily$records[daily$records$date >= min(expected_daily) & daily$records$date <= max(expected_daily), , drop = FALSE]
+    daily_in_range <- daily$records[daily$records$date >= min(inventory_start) & daily$records$date <= max(inventory_end), , drop = FALSE]
     weekly_in_range <- weekly$records[weekly$weeks %in% expected_weeks, , drop = FALSE]
     sidecars_valid <- sidecar_ok(c(daily_in_range$path, weekly_in_range$path), c(expected_daily, expected_weeks))
     geometry_valid <- FALSE
@@ -250,7 +306,7 @@ portfolio_validate_output_root <- function(plan, output_root,
       geometry_valid = geometry_valid, sidecars_valid = sidecars_valid,
       value_validation_valid = value_valid, weekly_validation_valid = weekly_valid)
   })
-  validation <- portfolio_validate_synchronization(records, plan$common_start, plan$common_end)
+  validation <- portfolio_validate_synchronization(records, work_start, work_end, inventory_start, inventory_end)
   for (i in seq_along(validation$products)) {
     validation$products[[i]]$geometry_valid <- records[[i]]$geometry_valid
     validation$products[[i]]$sidecars_valid <- records[[i]]$sidecars_valid
@@ -276,7 +332,14 @@ portfolio_new_manifest <- function(plan, output_root, run_id = NULL, source_comm
     effective_requested_end = plan$effective_requested_end,
     known_observed_end = setNames(as.list(known_observed_end), availability_names),
     availability_status = setNames(as.list(availability_status), availability_names),
-    common_daily_start = plan$common_start, common_daily_end = plan$common_end, complete_iso_week_count = length(plan$complete_iso_weeks),
+    common_daily_start = plan$common_start, common_daily_end = plan$common_end,
+    incremental_work_start = plan$incremental_work_start %||% plan$common_start,
+    incremental_work_end = plan$incremental_work_end %||% plan$common_end,
+    incremental_complete_iso_week_count = plan$incremental_complete_iso_week_count %||% length(plan$complete_iso_weeks),
+    portfolio_inventory_start = plan$portfolio_inventory_start %||% plan$common_start,
+    portfolio_inventory_end = plan$portfolio_inventory_end %||% plan$common_end,
+    cumulative_complete_iso_week_count = plan$cumulative_complete_iso_week_count %||% length(plan$complete_iso_weeks),
+    complete_iso_week_count = plan$cumulative_complete_iso_week_count %||% length(plan$complete_iso_weeks),
     source_workflow_ids = plan$source_workflow_ids, product_ids = plan$product_ids, source_workflows = plan$source_workflows,
     products = plan$products, manifest_directory = file.path(output_root, "runs", "production", "_portfolio", run_id), source_job_ids = list(), aggregation_job_ids = list(), validation_job_id = NULL,
     source_job_outcomes = list(), dependencies = list(), status = "planned", failure_stage = NULL, failure_message = NULL, plan = plan)
