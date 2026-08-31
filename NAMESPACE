@@ -30,6 +30,15 @@ export(resolve_source_storage_paths, era5land_family_product_ids,
  era5land_write_request_registry, era5land_validate_raw_archive,
  era5land_stage_requests, era5land_retrieve_requests,
  era5land_migrate_legacy_unavailable_rows, era5land_query_cds_job_status)
+export(backfill_daily_sidecars)
+export(portfolio_source_workflow_ids, portfolio_product_ids,
+       portfolio_read_definition, portfolio_read_source_availability,
+       portfolio_complete_iso_weeks, portfolio_resolve_common_start,
+       portfolio_resolve_plan, portfolio_validate_synchronization,
+       portfolio_validate_output_root,
+       portfolio_manifest_path, portfolio_new_manifest, portfolio_write_manifest,
+       portfolio_classify_job_state, portfolio_manifest_job_ids,
+       portfolio_reconcile_manifest)
 export(run_environmental_pipeline, request_adapter_for_spec, request_api_fields,
        build_cds_api_payload, validate_cds_api_payload, is_transient_cds_error,
        with_cds_retry, cds_retry_delay, align_extent_to_source_grid,

@@ -21,7 +21,7 @@ unset R_LIBS_SITE ALLOW_MULTIYEAR
 module purge
 module load r/4.5 udunits gdal proj geos git
 bash hpc/install_cdsdatagrab_atlas.sh "$REPO_DIR"
-REPO_DIR="$REPO_DIR" Rscript hpc/preflight_cdsdatagrab.R
+Rscript "$REPO_DIR/hpc/preflight_cdsdatagrab.R"
 ```
 
 Use `/project/disease_ecology/cds-datagrab-output` for production and `/project/disease_ecology/cds-datagrab-smoke-output` for smoke. The source and installed commits must match. Check CDS credential presence without printing `ecmwfr_PAT`.
@@ -36,7 +36,41 @@ Use `/project/disease_ecology/cds-datagrab-output` for production and `/project/
 | `agera5_relhum_min` | one standalone product | `config/agera5_relhum_min_production.yml` | `hpc/submit_agera5_relhum_min.sh` | 365/366 dates, 12 requests |
 | `era5land_daily_mean_utc06` | all eight ERA5-Land products | `config/era5land_daily_mean_utc06_production.yml` | `hpc/submit_era5land_daily_mean.sh` | 365/366 dates, 12 source requests |
 
-The ERA5-Land row is one shared eight-product source family, not eight independent CDS request streams. A full 2022–2026 configured horizon contains 55 monthly source requests. The current validated produced/observed daily endpoint is 2026-07-12; the configured horizon still ends 2026-12-31.
+The ERA5-Land row is one shared eight-product source family, not eight independent CDS request streams. A full 2022–2026 configured horizon contains 55 monthly source requests. The current validated produced/observed endpoint is 2026-07-26; the configured hard horizon still ends 2026-12-31.
+
+## Updating all production products
+
+Use the portfolio wrapper when the four standalone products and the eight ERA5-Land products must advance under one temporal contract:
+
+```bash
+# Read-only: no CDS contact, Slurm submission, or production-output changes.
+bash hpc/submit_all_products.sh --through latest-common --mode plan
+
+# Normal incremental update.
+bash hpc/submit_all_products.sh --through latest-common --mode update
+
+# Explicit common endpoint.
+bash hpc/submit_all_products.sh --through 2026-07-10 --mode update
+```
+
+The portfolio definition is `config/production_portfolio.yml`. It expands five logical source workflows to exactly 12 products. Endpoint policy is explicit:
+
+- `--through latest-common` is conservative and resolves to the minimum locally configured `temporal.observed_end`. It does not query or scrape CDS, and requires every source endpoint to be known locally.
+- `--through YYYY-MM-DD` is an operator-requested target. It must be a valid ISO date within every source workflow's configured hard temporal horizon, but it may extend beyond the currently known `temporal.observed_end`. Such source availability is reported as `unverified explicit target` until the source workflow runs; the source workflow remains authoritative and may fail normally if CDS cannot supply the date.
+
+The planner never edits `temporal.observed_end` or treats an explicit future target as confirmed. The first update plan audits existing daily filenames and uses the earliest missing date needed by the portfolio, while child pipelines retain their normal reuse and provenance behavior.
+
+The five source jobs are submitted concurrently. Each standalone job uses its existing full wrapper interface (`MODE=full DRY_RUN=false`), which plans, acquires missing source data, processes missing daily outputs, and reuses valid outputs. The ERA5-Land job uses its existing `--execute` path. Weekly aggregation is submitted only with `afterok:<all five source job IDs>` and uses the exact same common start/end dates. Four standalone aggregation jobs and one ERA5-Land aggregate-only family job then run concurrently. Portfolio validation depends on all aggregation jobs and checks synchronized daily dates, complete ISO weeks, raster geometry, sidecars/provenance, value ranges, and ERA5-Land support-mask behavior.
+
+The durable parent record is `runs/production/_portfolio/<run_id>/portfolio_manifest.json`. It records requested and resolved dates, source/installed commits, source and aggregation job IDs, dependency strings, per-product expected/present/missing counts, complete-week count, and final status. Submission status is not success: `validation_submitted` means Slurm accepted the validator but it has not been observed running; `validation_running` means the validator has started; `success` requires all source work, all aggregation work, and final validation. If a child fails or a dependent validator is cancelled, inspect the normal run manifests and Slurm logs, then use the optional reconciliation utility with the same external root. Valid TIFFs are reused; ordinary updates do not use `--overwrite`. The validated portfolio baseline is run `20260831T181051Z_portfolio`, through 2026-07-26 with 238 complete ISO weeks and 12 products.
+
+## Portfolio recovery
+
+1. For a source/package commit mismatch, run `bash hpc/install_cdsdatagrab_atlas.sh "$REPO_DIR"` and then `Rscript "$REPO_DIR/hpc/preflight_cdsdatagrab.R"`; execution is allowed only when the checkout and installed-package commits agree.
+2. For a failed dependency chain, inspect each source and aggregation manifest plus its Slurm log. A validator cancelled by `afterok` is not evidence that validation ran.
+3. Locate the newest portfolio manifest with `find "$ROOT/runs/production/_portfolio" -name portfolio_manifest.json -printf '%T@ %p\n' | sort -nr | head -n 1`.
+4. Distinguish `validation_submitted` (accepted/pending), `validation_running`, `cancelled` (Slurm stopped the job before completion), `failed`, and `success` (validator completed and wrote the manifest). Run `Rscript scripts/reconcile_portfolio_manifest.R --manifest PATH` to inspect recorded job states; add `--apply` to record a terminal cancellation/failure after review.
+5. Rerun the portfolio update with the same production root. Valid TIFFs and sidecars are reused, no ordinary update uses `--overwrite`, and status reconciliation is optional rather than a prerequisite for successful execution.
 
 ## Planning, staging, retrieval, processing, and aggregation
 
@@ -69,7 +103,7 @@ Rscript scripts/run_era5land_daily_mean.R --help
 Rscript scripts/run_era5land_daily_mean.R --config config/era5land_daily_mean_utc06_weekly_smoke.yml --output-root /project/disease_ecology/cds-datagrab-smoke-output --mode aggregate --dry-run false --start-date 2026-02-02 --end-date 2026-02-08
 ```
 
-`aggregate` is the explicit weekly-capable mode. The shell wrapper has no separate aggregate flag; use the R mode after local source acquisition when a distinct weekly pass is required. Weekly production is still pending for the current production pass.
+`aggregate` is the explicit weekly-capable mode. The shell wrapper has no separate aggregate flag; use the R mode after local source acquisition when a distinct weekly pass is required.
 
 The generic annual dispatcher accepts only `plan` and `execute`:
 
@@ -112,6 +146,8 @@ Rscript scripts/repair_era5land_daily_sidecar_provenance.R \
 ```
 
 The default is an audit/dry-run. Apply mode atomically changes only whitelisted provenance fields in date-scoped sidecars, never rewrites TIFFs, retains `diagnostics/era5land_daily_sidecar_provenance_repair.csv`, and is resumable/idempotent. Ambiguous date-to-request or product-to-member mappings are reported as failures rather than guessed.
+
+For legacy daily TIFFs with missing sidecars, `scripts/backfill_daily_sidecars.R` is a separate maintenance utility. It validates existing rasters, reports planned repairs by default, and writes only metadata sidecars with `--apply`; use explicit `--start-date` and `--end-date` scopes. It repairs metadata rather than raster values and is not part of routine portfolio updates.
 
 ## Smoke acceptance
 

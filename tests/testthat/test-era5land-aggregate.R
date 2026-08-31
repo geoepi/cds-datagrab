@@ -45,7 +45,8 @@ era5land_aggregate_fixture <- function(label, dates = as.Date("2021-12-27") + 0:
         era5land_surface_pressure_mean = 100 + i / 10,
         era5land_lai_high_mean = 1 + i / 10,
         era5land_lai_low_mean = 2 + i / 10)
-      terra::values(r) <- c(value, NA, value + 1, value + 2)
+      cells <- if (grepl("soilwater", id, fixed = TRUE)) c(value, NA, value + 0.01, value + 0.02) else c(value, NA, value + 1, value + 2)
+      terra::values(r) <- cells
       path <- file.path(paths$daily_dir, daily_output_filename(spec, dates[[i]]))
       terra::writeRaster(r, path, overwrite = TRUE)
       jsonlite::write_json(list(source_family_id = "era5land_daily_mean_utc06",
@@ -93,6 +94,52 @@ test_that("ERA5-Land aggregate mode does not create a week when a daily date is 
   expect_equal(result$manifest$weekly_outputs_reused, 0L)
   expect_true("era5land_tmean__2021-W52" %in% result$manifest$failed_product_weeks)
   expect_false(file.exists(file.path(paths$weekly_dir, "era5land_tmean_2021-W52.tif")))
+})
+
+test_that("ERA5-Land aggregate mode repairs cumulative weekly gaps during a one-day rerun", {
+  dates <- as.Date("2026-07-13") + 0:13
+  fixture <- era5land_aggregate_fixture("cumulative-recovery", dates)
+  initial <- run_era5land_daily_mean_family(fixture$config, mode = "aggregate", dry_run = FALSE,
+    output_root = fixture$root, start_date = min(dates), end_date = max(dates))
+  expect_identical(initial$status, "success")
+  expect_equal(initial$manifest$weekly_outputs_written, 16L)
+
+  weekly_paths <- list()
+  for (id in era5land_family_product_ids()) {
+    paths <- resolve_storage_paths(list(project = list(profile = "smoke", dataset_id = id), paths = list(root = NULL)), package_root(), fixture$root)
+    spec <- get_variable_spec(id)
+    weekly_paths[[id]] <- file.path(paths$weekly_dir,
+      weekly_output_filename(spec, 2026L, c(29L, 30L)))
+  }
+  tmean_hashes <- unname(tools::md5sum(weekly_paths[["era5land_tmean"]]))
+  for (id in setdiff(era5land_family_product_ids(), "era5land_tmean")) {
+    unlink(c(weekly_paths[[id]], paste0(weekly_paths[[id]], ".json")))
+  }
+
+  recovered <- run_era5land_daily_mean_family(fixture$config, mode = "aggregate", dry_run = FALSE,
+    output_root = fixture$root, start_date = as.Date("2026-07-26"), end_date = as.Date("2026-07-26"))
+  expect_identical(recovered$status, "success")
+  expect_equal(recovered$manifest$complete_iso_week_count, 2L)
+  expect_equal(recovered$manifest$weekly_outputs_written, 14L)
+  expect_equal(recovered$manifest$weekly_outputs_reused, 2L)
+  expect_equal(recovered$manifest$weekly_outputs_replaced, 0L)
+  expect_length(recovered$manifest$failed_product_weeks, 0L)
+  for (id in era5land_family_product_ids()) {
+    expect_true(all(file.exists(weekly_paths[[id]])))
+    expect_true(all(file.exists(paste0(weekly_paths[[id]], ".json"))))
+  }
+  expect_identical(unname(tools::md5sum(weekly_paths[["era5land_tmean"]])), tmean_hashes)
+})
+
+test_that("ERA5-Land aggregate mode returns success_noop for a zero-complete-week window", {
+  fixture <- era5land_aggregate_fixture("zero-complete-week", as.Date("2022-01-03"))
+  result <- run_era5land_daily_mean_family(fixture$config, mode="aggregate", dry_run=FALSE,
+    output_root=fixture$root, start_date=min(fixture$dates), end_date=max(fixture$dates))
+  expect_identical(result$status, "success_noop")
+  expect_identical(result$family_status, "success_noop")
+  expect_equal(result$manifest$complete_iso_week_count, 0L)
+  expect_equal(result$manifest$weekly_outputs_failed, 0L)
+  expect_length(result$manifest$failed_product_weeks, 0L)
 })
 
 test_that("weekly assessment with an explicit date window preserves ISO weeks across months and years", {

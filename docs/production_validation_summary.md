@@ -1,22 +1,37 @@
 # Production validation summary
 
-This document records the validated ERA5-Land daily-mean production state conservatively. It does not treat the configured future horizon as observed data, and it does not report weekly production as complete.
+This document records the current validated production portfolio conservatively. It does not treat the configured future horizon as observed data, and it does not claim any endpoint after the validated run below.
 
-## Validated daily production
+## Validated portfolio production
 
-The ERA5-Land daily-mean family completed historical daily production successfully on Atlas. The final validated inventory is:
+The full production portfolio completed successfully on Atlas. The stable portfolio run `20260831T181051Z_portfolio` is the current validation evidence:
 
 | Measure | Validated result |
 |---|---:|
 | ERA5-Land products | 8 |
-| Daily TIFFs per product | 1,654 |
-| Daily TIFFs total | 13,232 |
-| Produced/observed daily period | 2022-01-01 through 2026-07-12 |
+| Standalone products | 4 |
+| Portfolio products | 12 |
+| Complete ISO weeks per product | 238 |
+| Products passed sidecar, geometry, and weekly validation | 12 |
+| ERA5-Land daily TIFFs per product | 1,668 |
+| ERA5-Land daily TIFFs total | 13,344 |
+| Validated/produced endpoint | 2026-07-26 |
 | Configured horizon | 2022-01-01 through 2026-12-31 |
 
-The configured horizon is retained in the production YAML, but dates after 2026-07-12 are not claimed as observed or produced. Weekly aggregation has not been started in this production pass. For the currently produced daily period, the expected complete-week validation target is 237 ISO weeks per product and 1,896 weekly TIFFs total.
+The five production source-workflow configurations now agree on `temporal.observed_end = 2026-07-26`. This is the latest operator-confirmed available/produced endpoint, not a calendar-derived forecast. The configured hard horizon remains 2026-12-31; dates after 2026-07-26 are not validated.
 
 The eight outputs are additive to the established standalone products `era5_mintemp`, `era5_soilmoist`, `era5_lai_low`, and `agera5_relhum_min`. All ERA5-Land outputs use the shared `era5land_daily_mean_utc06` source family and one monthly `derived-era5-land-daily-statistics` request containing eight variables, with `daily_mean`, `utc-06:00`, and `1_hourly` request settings.
+
+## Portfolio orchestration status
+
+Portfolio orchestration has been exercised successfully on Atlas across the full dependency chain: source workflows → weekly aggregation → portfolio validation. The operator entry point is:
+
+```bash
+bash hpc/submit_all_products.sh --through latest-common --mode plan
+bash hpc/submit_all_products.sh --through latest-common --mode update
+```
+
+It submits five independent source workflows concurrently, then submits dependent weekly aggregation and final synchronization validation jobs. The parent manifest under `runs/production/_portfolio/<run_id>/` records the job IDs, common endpoint, complete ISO-week count, per-product coverage, and final status. The successful run confirmed sidecars, geometry, weekly validation, and synchronized cumulative inventories for all 12 products.
 
 ## Restart and recovery validation
 
@@ -30,6 +45,8 @@ Validated behavior includes:
 - production provenance sidecars can be audited/repaired without rewriting TIFFs.
 
 A March 2022 soil-water layer 1 recovery test processed 31 missing daily TIFFs for `era5land_soilwater_l1_mean`, while the other seven products were `reused_complete`. A second identical run performed complete-month fast-forward with `written=0`, `reused=248`, and `status=success`.
+
+The historical `era5_mintemp` sidecar repair is completed recovery evidence: 1,668 daily TIFFs were checked and 1,668 missing daily sidecars were written without rewriting raster values. `scripts/backfill_daily_sidecars.R` is a maintenance utility only. It defaults to a dry-run, `--apply` writes metadata sidecars for a scoped date range, and it must not be invoked for routine portfolio updates.
 
 ## Provenance repair validation
 

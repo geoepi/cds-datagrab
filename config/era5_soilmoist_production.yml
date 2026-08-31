@@ -18,7 +18,7 @@ spatial:
   require_complete_template_coverage: true
   write_coverage_diagnostics: true
 paths: {root: null}
-temporal: {initial_start_date: '2022-01-01', observed_end: '2026-07-12', configured_start_date: '2022-01-01', configured_end_date: '2026-12-31', source_lag_days: 0, overlap_days: 0, future_end_date: '2026-12-31'}
+temporal: {initial_start_date: '2022-01-01', observed_end: '2026-07-26', configured_start_date: '2022-01-01', configured_end_date: '2026-12-31', source_lag_days: 0, overlap_days: 0, future_end_date: '2026-12-31'}
 cds: {dataset_short_name: derived-era5-single-levels-daily-statistics, product_type: reanalysis, variable: volumetric_soil_water_layer_1, daily_statistic: daily_mean, time_zone: utc+00:00, frequency: 6_hourly, data_format: netcdf, download_format: unarchived, request_chunk: month, request_timeout_seconds: 7200, polling_seconds: 30, batch_workers: 1}
 processing: {source_units: m3 m-3, output_units: m3 m-3, unit_conversion: identity, resampling_method: bilinear, longitude_handling: auto, overwrite_observed_overlap: true, delete_replaced_estimates: true, invalid_output_action: quarantine, datatype: FLT4S, compression: DEFLATE, gdal_predictor: 3, tiled: true, naflag: -9999}
 weekly: {aggregation: mean, require_complete_week: true, expected_days: 7}

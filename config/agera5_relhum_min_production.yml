@@ -1,7 +1,7 @@
 project: {dataset_id: agera5_relhum_min, profile: production, output_prefix: relhum_min, model_alias: relhum}
 spatial: {template_path: spatial_domain/study_area_raster.tif, bbox_path: spatial_domain/study_bbox.gpkg, request_extent_source: template_bbox_union, api_bbox_buffer_degrees: 1.0, source_grid_degrees: 0.1, align_request_to_source_grid: true, mask_to_template: true, require_complete_template_coverage: true}
 paths: {root: null}
-temporal: {initial_start_date: '2022-01-01', observed_end: '2026-07-12', configured_start_date: '2022-01-01', configured_end_date: '2026-12-31', source_lag_days: 0, future_end_date: '2026-12-31', overlap_days: 0}
+temporal: {initial_start_date: '2022-01-01', observed_end: '2026-07-26', configured_start_date: '2022-01-01', configured_end_date: '2026-12-31', source_lag_days: 0, future_end_date: '2026-12-31', overlap_days: 0}
 cds: {dataset_short_name: sis-agrometeorological-indicators, variable: 2m_relative_humidity_derived, daily_statistic: 24_hour_minimum, dataset_version: "2_0", request_chunk: month}
 processing: {source_units: percent, output_units: percent, unit_conversion: identity, resampling_method: bilinear, overwrite_observed_overlap: true, datatype: FLT4S, naflag: -9999}
 weekly: {aggregation: mean, require_complete_week: true, expected_days: 7}

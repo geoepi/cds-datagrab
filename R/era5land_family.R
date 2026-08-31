@@ -452,6 +452,14 @@ run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_
   if (!identical(unname(as.character(cfg$project$source_family_id)), "era5land_daily_mean_utc06")) stop("Configuration is not an ERA5-Land daily-mean source-family configuration", call. = FALSE)
   if (!all(product_ids %in% .era5land_product_ids())) stop("Unknown ERA5-Land product selector", call. = FALSE)
   expected <- if (!is.null(request_override)) normalize_date_vector(request_override$raw_request_dates, "request_override$raw_request_dates") else era5land_expected_dates(cfg, start_date, end_date, dry_run)
+  if (mode == "aggregate" && is.null(request_override)) {
+    # Portfolio aggregation is also the recovery path for cumulative weekly
+    # gaps. Keep acquisition/process windows unchanged, but assess all
+    # configured inventory dates through the requested endpoint here.
+    cumulative_start <- as.Date(cfg$temporal$configured_start_date %||% cfg$temporal$initial_start_date)
+    cumulative_end <- max(expected)
+    expected <- safe_date_sequence(cumulative_start, cumulative_end)
+  }
   request_started <- Sys.time()
   source_paths <- resolve_source_storage_paths(cfg, root, output_root, create = TRUE)
   run_id <- paste0(format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"), "_", substr(digest::digest(list(cfg, mode, expected, product_ids), algo = "xxhash32"), 1, 8))

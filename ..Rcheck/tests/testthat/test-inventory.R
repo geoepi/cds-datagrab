@@ -1,1 +1,0 @@
-test_that("inventory preserves nonconforming names", { d<-tempfile(); dir.create(d); file.create(file.path(d,"mintemp_2026-01-01_est.tif")); file.create(file.path(d,"bad.tif")); i<-inventory_grid_directory(d,"mintemp","daily"); expect_true(any(!i$valid)); expect_true(is.na(summarize_grid_inventory(i)$latest_observed)) })

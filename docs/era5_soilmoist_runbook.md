@@ -38,7 +38,7 @@ CDS_DATAGRAB_ROOT=/project/disease_ecology/cds-datagrab-output PROFILE=productio
 
 Expected inventory is 365 valid daily rasters, 51 complete weekly rasters, and two incomplete boundary weeks. Review winter, spring, summer, and autumn rasters and independently calculate sample weekly means. Rerunning the same command should plan no dates, make no CDS requests, write no daily or weekly outputs, reuse 365 daily products and 51 weekly products, and finish successfully.
 
-After those checks, advance cumulatively through 2023-12-31, 2024-12-31, 2025-12-31, and 2026-07-12, never concurrently. The final expected inventory is 1,654 daily and 236 complete weekly rasters, with zero invalid or missing dates.
+After those checks, advance cumulatively through 2023-12-31, 2024-12-31, 2025-12-31, and 2026-07-26, never concurrently. The validated final inventory is 1,668 daily and 238 complete weekly rasters, with zero invalid or missing dates.
 
 ## Provenance, reruns, and audits
 

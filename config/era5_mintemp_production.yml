@@ -30,7 +30,7 @@ paths:
   root: null
 temporal:
   initial_start_date: '2022-01-01'
-  observed_end: '2026-07-12'
+  observed_end: '2026-07-26'
   configured_start_date: '2022-01-01'
   configured_end_date: '2026-12-31'
   source_lag_days: 0

@@ -1,0 +1,33 @@
+# Single source of truth for the production portfolio orchestration layer.
+# The child wrappers and product registry remain independently testable.
+portfolio: production
+profile: production
+source_workflows:
+  - id: era5_mintemp
+    wrapper: hpc/submit_era5_mintemp.sh
+    config: config/era5_mintemp_production.yml
+    products: [era5_mintemp]
+  - id: era5_soilmoist
+    wrapper: hpc/submit_era5_soilmoist.sh
+    config: config/era5_soilmoist_production.yml
+    products: [era5_soilmoist]
+  - id: era5_lai_low
+    wrapper: hpc/submit_era5_lai_low.sh
+    config: config/era5_lai_low_production.yml
+    products: [era5_lai_low]
+  - id: agera5_relhum_min
+    wrapper: hpc/submit_agera5_relhum_min.sh
+    config: config/agera5_relhum_min_production.yml
+    products: [agera5_relhum_min]
+  - id: era5land_daily_mean_utc06
+    wrapper: hpc/submit_era5land_daily_mean.sh
+    config: config/era5land_daily_mean_utc06_production.yml
+    products:
+      - era5land_tmean
+      - era5land_soiltemp_l1_mean
+      - era5land_soiltemp_l2_mean
+      - era5land_soilwater_l1_mean
+      - era5land_soilwater_l2_mean
+      - era5land_surface_pressure_mean
+      - era5land_lai_high_mean
+      - era5land_lai_low_mean

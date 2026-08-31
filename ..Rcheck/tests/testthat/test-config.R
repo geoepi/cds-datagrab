@@ -1,1 +1,0 @@
-test_that("configuration environment expansion works", { x<-expand_config_environment(list(path="${CDS_DATAGRAB_TEST_UNSET}")); expect_true(is.character(x$path)); expect_true(is.function(validate_pipeline_config)) })

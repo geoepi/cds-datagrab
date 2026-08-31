@@ -1,1 +1,0 @@
-test_that("daily and weekly formats support estimates", { expect_equal(format_daily_filename("mintemp",as.Date("2026-01-01"),TRUE),"mintemp_2026-01-01_est.tif"); expect_true(parse_grid_filename("mintemp_2026-01-01.tiff","mintemp")$valid); expect_equal(parse_grid_filename("mintemp_2026-W01.tif","mintemp")$iso_week,1) })

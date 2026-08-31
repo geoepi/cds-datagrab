@@ -328,24 +328,111 @@ build_agera5_member_date_map <- function(member_dates, member_hashes, readers=li
   }))
 }
 
+agera5_request_dates <- function(request) {
+  normalize_date_vector(request$raw_request_dates %||% sprintf("%s-%s-%s", request$year, request$month, request$day), "AgERA5 request dates")
+}
+
+agera5_archive_matches_request <- function(path, request) {
+  if (!file.exists(path) || !identical(detect_container_type(path), "zip")) return(FALSE)
+  listing <- tryCatch(utils::unzip(path, list=TRUE), error=function(e) NULL)
+  if (is.null(listing) || !nrow(listing)) return(FALSE)
+  members <- as.character(listing$Name)
+  nc_members <- members[grepl("\\.(nc|netcdf)$", members, ignore.case=TRUE)]
+  dates <- vapply(nc_members, archive_member_date, character(1))
+  requested <- as.character(agera5_request_dates(request))
+  length(nc_members) == length(requested) && !anyNA(dates) && !anyDuplicated(dates) && identical(sort(unname(dates)), sort(requested))
+}
+
+agera5_archive_candidates <- function(request, paths, include_active=TRUE) {
+  active <- if (isTRUE(include_active) && dir.exists(paths$raw_dir)) list.files(paths$raw_dir, full.names=TRUE, recursive=FALSE) else character()
+  partial_dir <- file.path(paths$raw_dir, ".partial")
+  partial <- if (dir.exists(partial_dir)) list.files(partial_dir, full.names=TRUE, recursive=FALSE) else character()
+  candidates <- c(active[!file.info(active)$isdir %in% TRUE], partial[!file.info(partial)$isdir %in% TRUE & !grepl("[.]part$", partial, ignore.case=TRUE)])
+  unique(candidates[vapply(candidates, agera5_archive_matches_request, logical(1), request=request)])
+}
+
+agera5_finalize_archive <- function(candidate, request, paths, run_dir=NULL) {
+  if (!agera5_archive_matches_request(candidate, request)) stop("AgERA5 candidate does not contain exactly the requested daily members", call.=FALSE)
+  spec <- get_variable_spec("agera5_relhum_min")
+  checksum <- digest::digest(file=candidate, algo="sha256")
+  stem <- tools::file_path_sans_ext(basename(request$target))
+  final_path <- file.path(paths$raw_dir, paste0(stem, ".zip"))
+  if (file.exists(final_path) && !identical(digest::digest(file=final_path, algo="sha256"), checksum)) stop("A different AgERA5 archive already exists at deterministic destination: ", final_path, call.=FALSE)
+
+  # Extraction is the content validation boundary. The archive is not active
+  # until every requested member has passed variable/date checks.
+  extracted_root <- paths$extracted_dir %||% file.path(paths$dataset_root, "extracted")
+  fs::dir_create(extracted_root, recurse=TRUE)
+  manifest <- extract_agera5_archive(candidate, extracted_root, request$request_hash, spec, run_dir)
+  select_agera5_archive_members(manifest, agera5_request_dates(request))
+
+  candidate_abs <- normalizePath(candidate, winslash="/", mustWork=TRUE)
+  final_abs <- normalizePath(final_path, winslash="/", mustWork=FALSE)
+  if (!identical(candidate_abs, final_abs)) {
+    if (file.exists(final_path)) unlink(candidate_abs)
+    else if (!file.rename(candidate_abs, final_path)) stop("Could not atomically promote AgERA5 archive: ", final_path, call.=FALSE)
+  }
+  final_abs <- normalizePath(final_path, winslash="/", mustWork=TRUE)
+  if (!identical(digest::digest(file=final_abs, algo="sha256"), checksum)) stop("AgERA5 archive failed post-promotion verification", call.=FALSE)
+  partial_dir <- file.path(paths$raw_dir, ".partial")
+  partials <- if (dir.exists(partial_dir)) list.files(partial_dir, full.names=TRUE, recursive=FALSE) else character()
+  for (p in partials[!file.info(partials)$isdir %in% TRUE & !grepl("[.]part$", partials, ignore.case=TRUE)]) {
+    if (normalizePath(p, winslash="/", mustWork=FALSE) == final_abs) next
+    if (identical(digest::digest(file=p, algo="sha256"), checksum)) unlink(p)
+  }
+
+  # Extraction was performed while the candidate could still be in .partial;
+  # rewrite only the provenance path after the atomic raw promotion.
+  manifest$archive_path <- final_abs
+  manifest$archive_checksum <- checksum
+  extracted_manifest <- file.path(extracted_root, request$request_hash, "archive_manifest.csv")
+  utils::write.csv(manifest, extracted_manifest, row.names=FALSE)
+  if (!is.null(run_dir)) utils::write.csv(manifest, file.path(run_dir, "archive_manifest.csv"), row.names=FALSE)
+  list(final_path=final_abs, manifest=manifest, checksum=checksum)
+}
+
+agera5_download_row <- function(request, final_path, status, result=NULL, returned_path="", elapsed_seconds=0) {
+  vr <- validate_downloaded_target(final_path, request)
+  data.frame(target_filename=request$target, resolved_target_path=final_path, status=status, valid=vr$valid,
+    exists=vr$exists, size=vr$size, format=vr$format, readable=vr$readable,
+    netcdf_metadata_readable=vr$netcdf_metadata_readable, request_match=vr$request_match,
+    failure_reason=if (vr$valid) "" else vr$failure_reason,
+    returned_path=returned_path %||% "", elapsed_seconds=elapsed_seconds,
+    warnings=if (!is.null(result) && "warnings" %in% names(result)) result$warnings[[1]] else "",
+    error_class="", error_message="", stringsAsFactors=FALSE)
+}
+
 .download_cds_requests_before_archive_adapter <- download_cds_requests
 download_cds_requests <- function(requests, ...) {
   if (!length(requests) || !any(vapply(requests, function(x) identical(x$adapter, "agera5"), logical(1)))) return(.download_cds_requests_before_archive_adapter(requests, ...))
   dots <- list(...); paths <- dots$paths; run_dir <- dots$run_dir; dry_run <- isTRUE(dots$dry_run %||% TRUE); overwrite <- isTRUE(dots$overwrite %||% FALSE)
-  if (length(requests) != 1L) return(.download_cds_requests_before_archive_adapter(requests, ...))
-  req <- requests[[1]]; zip_target <- file.path(paths$raw_dir, sub("\\.(nc|netcdf)$", ".zip", req$target, ignore.case=TRUE));
-  if (file.exists(zip_target) && !overwrite && isTRUE(validate_downloaded_target(zip_target, req)$valid)) {
-    row <- data.frame(target_filename=req$target,resolved_target_path=zip_target,status="reused_existing",valid=TRUE,exists=TRUE,size=file.info(zip_target)$size,format="zip",readable=TRUE,netcdf_metadata_readable=NA,request_match=TRUE,failure_reason="",returned_path="",elapsed_seconds=0,warnings="",error_class="",error_message="",stringsAsFactors=FALSE)
-    if (!is.null(run_dir)) { jsonlite::write_json(build_cds_api_payload(req),file.path(run_dir,"cds_api_payload.json"),pretty=TRUE,auto_unbox=TRUE); utils::write.csv(row,file.path(run_dir,"download_manifest.csv"),row.names=FALSE) }
+  if (length(requests) != 1L || is.null(paths)) return(.download_cds_requests_before_archive_adapter(requests, ...))
+  req <- requests[[1]]
+  if (dry_run) return(.download_cds_requests_before_archive_adapter(requests, ...))
+
+  staged <- if (!overwrite) agera5_archive_candidates(req, paths) else character()
+  if (length(staged)) {
+    finalized <- agera5_finalize_archive(staged[[1]], req, paths, run_dir)
+    row <- agera5_download_row(req, finalized$final_path, "reused_existing", returned_path=staged[[1]])
+    if (!is.null(run_dir)) { jsonlite::write_json(build_cds_api_payload(req), file.path(run_dir, "cds_api_payload.json"), pretty=TRUE, auto_unbox=TRUE); utils::write.csv(row, file.path(run_dir, "download_manifest.csv"), row.names=FALSE) }
     return(row)
   }
-  result <- .download_cds_requests_before_archive_adapter(requests, ...)
-  source <- result$resolved_target_path[[1]]
-  if (!dry_run && file.exists(source) && identical(detect_download_format(source), "zip")) {
-    if (file.exists(zip_target)) { if (!identical(digest::digest(file=source,algo="sha256"),digest::digest(file=zip_target,algo="sha256"))) stop("Nonidentical ZIP exists at resolved destination",call.=FALSE); unlink(source) } else if (!file.rename(source,zip_target)) stop("Could not atomically promote AgERA5 ZIP",call.=FALSE)
-    result$resolved_target_path[[1]] <- zip_target; result$format[[1]] <- "zip"; result$target_filename[[1]] <- req$target
-    if (!is.null(run_dir)) utils::write.csv(result,file.path(run_dir,"download_manifest.csv"),row.names=FALSE)
+
+  result <- NULL; transfer_error <- NULL
+  result <- tryCatch(.download_cds_requests_before_archive_adapter(requests, ...), error=function(e) { transfer_error <<- e; NULL })
+  source <- if (!is.null(result) && nrow(result)) result$resolved_target_path[[1]] else NA_character_
+  candidates <- if (!overwrite) agera5_archive_candidates(req, paths) else character()
+  if (!is.na(source) && file.exists(source) && identical(detect_container_type(source), "zip")) candidates <- unique(c(source, candidates))
+  if (length(candidates)) {
+    finalized <- agera5_finalize_archive(candidates[[1]], req, paths, run_dir)
+    returned <- if (!is.null(result) && nrow(result)) result$returned_path[[1]] else candidates[[1]]
+    elapsed <- if (!is.null(result) && nrow(result)) result$elapsed_seconds[[1]] else 0
+    status <- if (!is.null(result) && nrow(result) && identical(result$status[[1]], "downloaded")) "downloaded" else "reused_existing"
+    row <- agera5_download_row(req, finalized$final_path, status, result, returned, elapsed)
+    if (!is.null(run_dir)) utils::write.csv(row, file.path(run_dir, "download_manifest.csv"), row.names=FALSE)
+    return(row)
   }
+  if (!is.null(transfer_error)) stop(transfer_error)
   result
 }
 

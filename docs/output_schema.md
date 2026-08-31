@@ -18,6 +18,12 @@ This reference describes fields currently written by the ERA5-Land family manife
 └── logs/<pipeline|slurm>/<profile>/
 ```
 
+## Portfolio manifest
+
+Portfolio updates write `runs/production/_portfolio/<run_id>/portfolio_manifest.json`. The parent manifest is the operator-level answer to whether one update completed and whether all products are temporally aligned. It contains `run_id`, timestamps, source and installed Git commits, profile, output root, `endpoint_policy`, `requested_end`, `known_observed_end` and `availability_status` per source, `effective_requested_end`, resolved `common_daily_start`/`common_daily_end`, the five `source_workflow_ids`, the 12 `product_ids`, child `source_job_ids` and `source_job_outcomes`, `aggregation_job_ids`, `validation_job_id`, dependency strings, per-product `daily_expected`/`daily_present`/`daily_missing` and `weekly_expected`/`weekly_present`/`weekly_missing`, `complete_iso_week_count`, per-product status, overall status, and failure stage/message.
+
+Parent states include `planned`, `source_running`, `source_failed`, `aggregation_running`, `validation_submitted`, `validation_running`, `success`, `failed`, and `cancelled`. Submission of the validation job records `validation_submitted`; it becomes `validation_running` only after the validator starts. A cancelled dependent validator is not active validation and may be recorded as `cancelled` by `scripts/reconcile_portfolio_manifest.R`, with `failure_stage` and `failure_message` identifying upstream terminal states. Job submission alone never sets `success`; final validation must confirm identical daily endpoints and identical complete ISO-week sets. The portfolio validator does not replace the product manifests or ERA5-Land source-family provenance; it summarizes and cross-checks them.
+
 Raw monthly ERA5-Land archives are stored once under the shared source family. The eight product directories remain isolated for derived daily/weekly outputs. Request-scoped extraction contains `member_inventory.csv` and `source_map.csv`, which map the shared archive/member to product/date outputs.
 
 ## Request registry
