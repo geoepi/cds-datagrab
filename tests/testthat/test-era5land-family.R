@@ -21,3 +21,47 @@ test_that("ERA5-Land source storage is shared and product paths remain isolated"
 test_that("shared fixture contains and reads all eight NetCDF variables", {
   skip_if_not_installed("ncdf4"); skip_if_not_installed("terra"); source(package_file("tests","fixtures","make_era5land_family_fixture.R")); path <- file.path(test_external_root("era5land-fixture"),"bundle.nc"); dir.create(dirname(path),recursive=TRUE); make_era5land_family_fixture(path); md <- inspect_netcdf_ncdf4(path); expect_true(all(c("t2m","stl1","stl2","swvl1","swvl2","sp","lai_hv","lai_lv") %in% names(md$variables))); dates <- as.Date(c("2026-02-01","2026-02-02","2026-02-03")); for (id in era5land_family_product_ids()) { x <- read_daily_netcdf(path,get_variable_spec(id),dates,dates); expect_equal(as.character(x$dates),as.character(dates)); expect_length(x$rasters,3); expect_identical(x$reader_used,"ncdf4") }
 })
+
+test_that("ERA5-Land valid_time singleton dimensions remain readable for all products", {
+  skip_if_not_installed("ncdf4"); skip_if_not_installed("terra")
+  source(package_file("tests", "fixtures", "make_era5land_family_fixture.R"))
+  path <- file.path(test_external_root("era5land-singleton-valid-time"), "bundle.nc")
+  dir.create(dirname(path), recursive = TRUE)
+  date <- as.Date("2026-07-26")
+  make_era5land_family_fixture(path, dates = date, time_name = "valid_time")
+  metadata <- inspect_netcdf_ncdf4(path)
+  expect_identical(metadata$time_coordinate_name, "valid_time")
+  expect_equal(as.character(metadata$decoded_dates), "2026-07-26")
+  wrapped <- read_era5_daily_layers(path, expected_dates = date,
+    variable_spec = get_variable_spec("era5land_tmean"))
+  expect_identical(wrapped$time_coordinate_name, "valid_time")
+  expect_length(wrapped$rasters, 1L)
+  master_template <- terra::rast(nrows = 2, ncols = 2, xmin = -126.75, xmax = -125.75,
+    ymin = 42.25, ymax = 43.25, crs = "EPSG:4326")
+  for (id in era5land_family_product_ids()) {
+    result <- read_daily_netcdf(path, get_variable_spec(id), date, date)
+    expect_identical(result$time_coordinate_name, "valid_time")
+    expect_equal(result$dimension_lengths, c(2, 2, 1))
+    expect_length(result$rasters, 1L)
+    expect_equal(c(terra::nrow(result$rasters[[1]]), terra::ncol(result$rasters[[1]])), c(2, 2))
+    expect_true(terra::compareGeom(result$rasters[[1]], master_template, stopOnError = FALSE))
+  }
+})
+
+test_that("NetCDF time aliases are resolved consistently and unsupported dimensions fail", {
+  skip_if_not_installed("ncdf4"); skip_if_not_installed("terra")
+  source(package_file("tests", "fixtures", "make_era5land_family_fixture.R"))
+  base <- test_external_root("era5land-time-aliases")
+  dir.create(base, recursive = TRUE)
+  time_path <- file.path(base, "time.nc")
+  valid_time_path <- file.path(base, "valid_time.nc")
+  malformed_path <- file.path(base, "malformed.nc")
+  make_era5land_family_fixture(time_path, dates = as.Date("2026-07-26") + 0:1, time_name = "time")
+  make_era5land_family_fixture(valid_time_path, dates = as.Date("2026-07-26") + 0:1, time_name = "valid_time")
+  make_era5land_family_fixture(malformed_path, dates = as.Date("2026-07-26") + 0:1, time_name = "forecast_time")
+  dates <- as.Date("2026-07-26") + 0:1
+  expect_identical(read_daily_netcdf(time_path, get_variable_spec("era5land_tmean"), dates, dates)$time_coordinate_name, "time")
+  expect_identical(read_daily_netcdf(valid_time_path, get_variable_spec("era5land_tmean"), dates, dates)$time_coordinate_name, "valid_time")
+  expect_error(read_daily_netcdf(malformed_path, get_variable_spec("era5land_tmean"), dates, dates), "longitude, latitude, and time dimensions")
+  expect_error(resolve_netcdf_coordinate_dimensions(c("longitude", "latitude", "forecast_time")), "longitude, latitude, and time dimensions")
+})
