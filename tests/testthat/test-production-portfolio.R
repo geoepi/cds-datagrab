@@ -204,6 +204,62 @@ test_that("portfolio source commands use each wrapper's full execution path", {
   expect_match(script, "--execute")
 })
 
+test_that("ERA5-Land aggregation preserves the complete product family through Slurm export", {
+  definition <- portfolio_read_definition(package_file("config", "production_portfolio.yml"))
+  family <- definition$source_workflows[[5L]]
+  expect_identical(family$id, "era5land_daily_mean_utc06")
+  expect_identical(family$products, era5land_family_product_ids())
+  script <- paste(readLines(package_file("hpc", "submit_all_products.sh"), warn = FALSE), collapse = "\n")
+  expect_true(grepl('PRODUCT_IDS="$products" START_DATE=', script, fixed = TRUE))
+  expect_true(grepl('--export=ALL "$REPO_DIR/hpc/run_portfolio_aggregate_era5land.slurm"', script, fixed = TRUE))
+  expect_false(grepl('--export=ALL,REPO_DIR,CONFIG="$config",PRODUCT_IDS="$products"', script, fixed = TRUE))
+})
+
+test_that("portfolio validation exposes exact missing daily and weekly sidecars", {
+  definition_path <- package_file("config", "production_portfolio.yml")
+  definition <- portfolio_read_definition(definition_path)
+  attr(definition, "config_path") <- definition_path
+  output_root <- withr::local_tempdir()
+  plan <- portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-26", output_root = output_root)
+  plan$products <- list(plan$products[[which(vapply(plan$products, function(x) identical(x$product_id, "era5_mintemp"), logical(1)))[[1L]]]])
+  plan$portfolio_inventory_start <- "2026-07-20"
+  plan$portfolio_inventory_end <- "2026-07-26"
+  plan$cumulative_complete_iso_weeks <- "2026-W30"
+
+  spec <- get_variable_spec("era5_mintemp")
+  daily_dir <- file.path(output_root, "data", "production", "era5_mintemp", "daily")
+  weekly_dir <- file.path(output_root, "data", "production", "era5_mintemp", "weekly")
+  dir.create(daily_dir, recursive = TRUE)
+  dir.create(weekly_dir, recursive = TRUE)
+  daily_paths <- file.path(daily_dir, vapply(as.Date("2026-07-20") + 0:6,
+    function(date) daily_output_filename(spec, date), character(1)))
+  weekly_path <- file.path(weekly_dir, weekly_output_filename(spec, 2026L, 30L))
+  for (path in daily_paths[-7L]) jsonlite::write_json(list(valid = TRUE), paste0(path, ".json"), auto_unbox = TRUE)
+
+  result <- portfolio_validate_output_root(plan, output_root, repo_root = package_root())
+  product <- result$products[[1L]]
+  expect_identical(product$daily_sidecars_missing, paste0(daily_paths[[7L]], ".json"))
+  expect_identical(product$weekly_sidecars_missing, paste0(weekly_path, ".json"))
+  expect_identical(product$daily_sidecars_invalid, character())
+  expect_identical(product$weekly_sidecars_invalid, character())
+})
+
+test_that("portfolio sidecar diagnostics distinguish complete and invalid sidecars", {
+  temp <- withr::local_tempdir()
+  paths <- file.path(temp, c("daily.tif", "weekly.tif"))
+  jsonlite::write_json(list(valid = TRUE), paste0(paths[[1L]], ".json"), auto_unbox = TRUE)
+  jsonlite::write_json(list(valid = TRUE), paste0(paths[[2L]], ".json"), auto_unbox = TRUE)
+  complete <- portfolio_sidecar_diagnostics(paths)
+  expect_true(complete$valid)
+  expect_identical(complete$missing, character())
+  expect_identical(complete$invalid, character())
+
+  writeLines("not-json", paste0(paths[[2L]], ".json"))
+  invalid <- portfolio_sidecar_diagnostics(paths)
+  expect_false(invalid$valid)
+  expect_identical(invalid$invalid, paste0(paths[[2L]], ".json"))
+})
+
 test_that("portfolio updates do not request overwrite", {
   scripts <- vapply(c("submit_all_products.sh", "run_portfolio_aggregate_product.slurm", "run_portfolio_aggregate_era5land.slurm"), function(x) paste(readLines(package_file("hpc", x), warn = FALSE), collapse = "\n"), character(1))
   expect_false(any(grepl("--overwrite", scripts, fixed = TRUE)))

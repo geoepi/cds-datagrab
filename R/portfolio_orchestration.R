@@ -123,6 +123,26 @@ portfolio_weekly_files <- function(root, profile, product, prefix) {
   list(weeks = sort(unique(sprintf("%04d-W%02d", records$iso_year, records$iso_week))), paths = records$path, records = records)
 }
 
+portfolio_sidecar_diagnostics <- function(expected_paths) {
+  expected_paths <- unique(as.character(expected_paths))
+  if (!length(expected_paths)) {
+    return(list(expected = character(), present = character(), missing = character(), invalid = character(), valid = TRUE))
+  }
+  sidecar_paths <- paste0(expected_paths, ".json")
+  present <- file.exists(sidecar_paths)
+  valid_json <- logical(length(sidecar_paths))
+  valid_json[present] <- vapply(sidecar_paths[present], function(path) {
+    !is.null(tryCatch(jsonlite::read_json(path, simplifyVector = FALSE), error = function(e) NULL))
+  }, logical(1))
+  list(
+    expected = sidecar_paths,
+    present = sidecar_paths[present],
+    missing = sidecar_paths[!present],
+    invalid = sidecar_paths[present & !valid_json],
+    valid = all(present & valid_json)
+  )
+}
+
 portfolio_resolve_common_start <- function(definition, common_end, output_root = NULL, repo_root = dirname(dirname(attr(definition, "config_path") %||% "config/production_portfolio.yml"))) {
   common_end <- as.Date(common_end)
   starts <- vapply(definition$source_workflows, function(x) {
@@ -272,17 +292,20 @@ portfolio_validate_output_root <- function(plan, output_root,
     weekly <- portfolio_weekly_files(output_root, profile, product$product_id, spec$weekly_filename_prefix)
     expected_daily <- safe_date_sequence(portfolio_inventory_start, portfolio_inventory_end)
     expected_weeks <- plan$cumulative_complete_iso_weeks %||% portfolio_complete_iso_weeks(portfolio_inventory_start, portfolio_inventory_end)
-    sidecar_ok <- function(paths, expected_count) {
-      if (!length(paths)) return(expected_count == 0L)
-      all(vapply(paths, function(path) {
-        sidecar <- paste0(path, ".json")
-        if (!file.exists(sidecar)) return(FALSE)
-        !is.null(tryCatch(jsonlite::read_json(sidecar, simplifyVector = FALSE), error = function(e) NULL))
-      }, logical(1)))
-    }
+    daily_dir <- file.path(output_root, "data", profile, product$product_id, "daily")
+    weekly_dir <- file.path(output_root, "data", profile, product$product_id, "weekly")
+    expected_daily_paths <- file.path(daily_dir, vapply(expected_daily, function(date) daily_output_filename(spec, date), character(1)))
+    expected_weekly_paths <- if (length(expected_weeks)) {
+      file.path(weekly_dir, vapply(expected_weeks, function(week_id) {
+        parts <- strsplit(week_id, "-W", fixed = TRUE)[[1L]]
+        weekly_output_filename(spec, as.integer(parts[[1L]]), as.integer(parts[[2L]]))
+      }, character(1)))
+    } else character()
+    daily_sidecars <- portfolio_sidecar_diagnostics(expected_daily_paths)
+    weekly_sidecars <- portfolio_sidecar_diagnostics(expected_weekly_paths)
     daily_in_range <- daily$records[daily$records$date >= min(portfolio_inventory_start) & daily$records$date <= max(portfolio_inventory_end), , drop = FALSE]
     weekly_in_range <- weekly$records[weekly$weeks %in% expected_weeks, , drop = FALSE]
-    sidecars_valid <- sidecar_ok(c(daily_in_range$path, weekly_in_range$path), length(expected_daily) + length(expected_weeks))
+    sidecars_valid <- isTRUE(daily_sidecars$valid) && isTRUE(weekly_sidecars$valid)
     geometry_valid <- FALSE
     value_valid <- FALSE
     weekly_valid <- TRUE
@@ -304,7 +327,15 @@ portfolio_validate_output_root <- function(plan, output_root,
       daily_dates = as.character(if (geometry_valid && value_valid) daily$dates else daily$dates),
       weekly_ids = if (weekly_valid) weekly$weeks else weekly$weeks,
       geometry_valid = geometry_valid, sidecars_valid = sidecars_valid,
-      value_validation_valid = value_valid, weekly_validation_valid = weekly_valid)
+      value_validation_valid = value_valid, weekly_validation_valid = weekly_valid,
+      daily_sidecars_expected = daily_sidecars$expected,
+      daily_sidecars_present = daily_sidecars$present,
+      daily_sidecars_missing = daily_sidecars$missing,
+      daily_sidecars_invalid = daily_sidecars$invalid,
+      weekly_sidecars_expected = weekly_sidecars$expected,
+      weekly_sidecars_present = weekly_sidecars$present,
+      weekly_sidecars_missing = weekly_sidecars$missing,
+      weekly_sidecars_invalid = weekly_sidecars$invalid)
   })
   validation <- portfolio_validate_synchronization(records, work_start, work_end, portfolio_inventory_start, portfolio_inventory_end)
   for (i in seq_along(validation$products)) {
@@ -312,6 +343,10 @@ portfolio_validate_output_root <- function(plan, output_root,
     validation$products[[i]]$sidecars_valid <- records[[i]]$sidecars_valid
     validation$products[[i]]$value_validation_valid <- records[[i]]$value_validation_valid
     validation$products[[i]]$weekly_validation_valid <- records[[i]]$weekly_validation_valid
+    for (field in c("daily_sidecars_expected", "daily_sidecars_present", "daily_sidecars_missing", "daily_sidecars_invalid",
+                    "weekly_sidecars_expected", "weekly_sidecars_present", "weekly_sidecars_missing", "weekly_sidecars_invalid")) {
+      validation$products[[i]][[field]] <- records[[i]][[field]]
+    }
     if (!isTRUE(records[[i]]$weekly_validation_valid)) validation$products[[i]]$status <- "failed"
   }
   validation$status <- if (all(vapply(validation$products, function(x) identical(x$status, "success"), logical(1)))) "success" else "failed"

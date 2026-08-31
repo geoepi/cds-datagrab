@@ -144,7 +144,10 @@ for i in "${!chunk_starts[@]}"; do
     [[ "$kind" == SOURCE ]] || continue
     chunk_year="${chunk_starts[$i]:0:4}"
     if [[ "$source" == era5land_daily_mean_utc06 ]]; then
-      job_id="$(sbatch --parsable --dependency="$dependency" --job-name="cds_portfolio_era5land_${chunk_year}_aggregate" --output="$CDS_DATAGRAB_ROOT/logs/slurm/production/cds_portfolio_era5land_${chunk_year}_aggregate_%j.out" --error="$CDS_DATAGRAB_ROOT/logs/slurm/production/cds_portfolio_era5land_${chunk_year}_aggregate_%j.err" --export=ALL,REPO_DIR,CONFIG="$config",PRODUCT_IDS="$products",START_DATE="${chunk_starts[$i]}",END_DATE="${chunk_ends[$i]}",CDS_DATAGRAB_ROOT="$CDS_DATAGRAB_ROOT",CDS_DATAGRAB_R_LIB="$CDS_DATAGRAB_R_LIB" "$REPO_DIR/hpc/run_portfolio_aggregate_era5land.slurm")"
+      # PRODUCT_IDS is comma-separated, while Slurm uses commas to delimit
+      # --export entries.  Put the values in the submission environment and
+      # export the complete environment so Slurm cannot truncate the family.
+      job_id="$(REPO_DIR="$REPO_DIR" CONFIG="$config" PRODUCT_IDS="$products" START_DATE="${chunk_starts[$i]}" END_DATE="${chunk_ends[$i]}" CDS_DATAGRAB_ROOT="$CDS_DATAGRAB_ROOT" CDS_DATAGRAB_R_LIB="$CDS_DATAGRAB_R_LIB" sbatch --parsable --dependency="$dependency" --job-name="cds_portfolio_era5land_${chunk_year}_aggregate" --output="$CDS_DATAGRAB_ROOT/logs/slurm/production/cds_portfolio_era5land_${chunk_year}_aggregate_%j.out" --error="$CDS_DATAGRAB_ROOT/logs/slurm/production/cds_portfolio_era5land_${chunk_year}_aggregate_%j.err" --export=ALL "$REPO_DIR/hpc/run_portfolio_aggregate_era5land.slurm")"
       aggregation_jobs["era5land_daily_mean_utc06__${chunk_year}"]="$job_id"
     else
       product="$(printf '%s' "$products" | cut -d, -f1)"
