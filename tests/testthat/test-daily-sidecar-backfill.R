@@ -1,0 +1,61 @@
+mintemp_sidecar_fixture <- function(label) {
+  skip_if_not_installed("terra")
+  root <- test_external_root(paste0("mintemp-sidecar-backfill-", label))
+  config_path <- package_file("config", "era5_mintemp_smoke.yml")
+  cfg <- read_pipeline_config(config_path)
+  cfg <- resolve_config_paths(cfg, package_root(), root, FALSE)
+  paths <- resolve_storage_paths(cfg, package_root(), root, create = TRUE)
+  template <- terra::rast(cfg$spatial$template_path)
+  output <- template
+  terra::values(output) <- ifelse(is.na(terra::values(template, mat = FALSE)), NA, 1)
+  tif_path <- file.path(paths$daily_dir, "mintemp_2026-07-01.tif")
+  terra::writeRaster(output, tif_path, overwrite = TRUE)
+  list(root = root, config = config_path, tif = tif_path)
+}
+
+test_that("legacy valid mintemp TIFF receives an honest sidecar and is idempotent", {
+  fixture <- mintemp_sidecar_fixture("valid")
+  before_hash <- unname(tools::md5sum(fixture$tif))
+  first <- backfill_daily_sidecars(fixture$config, fixture$root, start_date = "2026-07-01", end_date = "2026-07-01", apply = TRUE)
+  expect_identical(first$status, "success")
+  expect_equal(first$written, 1L)
+  expect_equal(first$reused, 0L)
+  expect_equal(first$failed, 0L)
+  sidecar <- paste0(fixture$tif, ".json")
+  expect_true(file.exists(sidecar))
+  metadata <- jsonlite::read_json(sidecar, simplifyVector = TRUE)
+  expect_identical(metadata$provenance_status, "legacy_backfilled_unresolved")
+  expect_true(is.null(metadata$request_hash))
+  expect_identical(metadata$date, "2026-07-01")
+  expect_identical(unname(tools::md5sum(fixture$tif)), before_hash)
+  expect_true(portfolio_sidecar_diagnostics(fixture$tif)$valid)
+
+  second <- backfill_daily_sidecars(fixture$config, fixture$root, start_date = "2026-07-01", end_date = "2026-07-01", apply = TRUE)
+  expect_equal(second$written, 0L)
+  expect_equal(second$reused, 1L)
+  expect_equal(second$failed, 0L)
+  expect_identical(unname(tools::md5sum(fixture$tif)), before_hash)
+})
+
+test_that("existing sidecars are reused and malformed TIFFs are not granted sidecars", {
+  fixture <- mintemp_sidecar_fixture("existing")
+  sidecar <- paste0(fixture$tif, ".json")
+  jsonlite::write_json(list(existing = TRUE), sidecar, auto_unbox = TRUE)
+  reused <- backfill_daily_sidecars(fixture$config, fixture$root, start_date = "2026-07-01", end_date = "2026-07-01", apply = TRUE)
+  expect_equal(reused$reused, 1L)
+  expect_identical(jsonlite::read_json(sidecar, simplifyVector = TRUE)$existing, TRUE)
+
+  bad <- file.path(dirname(fixture$tif), "mintemp_2026-07-02.tif")
+  writeLines("not-a-raster", bad)
+  failed <- backfill_daily_sidecars(fixture$config, fixture$root, start_date = "2026-07-02", end_date = "2026-07-02", apply = TRUE)
+  expect_equal(failed$failed, 1L)
+  expect_false(file.exists(paste0(bad, ".json")))
+})
+
+test_that("dry-run sidecar backfill reports planned work without writing", {
+  fixture <- mintemp_sidecar_fixture("dry-run")
+  result <- backfill_daily_sidecars(fixture$config, fixture$root, start_date = "2026-07-01", end_date = "2026-07-01", apply = FALSE)
+  expect_equal(result$planned, 1L)
+  expect_equal(result$written, 0L)
+  expect_false(file.exists(paste0(fixture$tif, ".json")))
+})

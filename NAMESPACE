@@ -30,6 +30,7 @@ export(resolve_source_storage_paths, era5land_family_product_ids,
  era5land_write_request_registry, era5land_validate_raw_archive,
  era5land_stage_requests, era5land_retrieve_requests,
  era5land_migrate_legacy_unavailable_rows, era5land_query_cds_job_status)
+export(backfill_daily_sidecars)
 export(portfolio_source_workflow_ids, portfolio_product_ids,
        portfolio_read_definition, portfolio_read_source_availability,
        portfolio_complete_iso_weeks, portfolio_resolve_common_start,
