@@ -1,7 +1,7 @@
 project: {dataset_id: era5_lai_low, profile: production, output_prefix: lai_low}
 spatial: {template_path: spatial_domain/study_area_raster.tif, bbox_path: spatial_domain/study_bbox.gpkg, request_extent_source: template_bbox_union, api_bbox_buffer_degrees: 1.0, source_grid_degrees: 0.25, align_request_to_source_grid: true, mask_to_template: true, require_complete_template_coverage: true}
 paths: {root: null}
-temporal: {initial_start_date: '2022-01-01', observed_end: '2026-07-12', configured_start_date: '2022-01-01', configured_end_date: '2026-12-31', source_lag_days: 0, future_end_date: '2026-12-31', overlap_days: 0}
+temporal: {initial_start_date: '2022-01-01', observed_end: '2026-07-26', configured_start_date: '2022-01-01', configured_end_date: '2026-12-31', source_lag_days: 0, future_end_date: '2026-12-31', overlap_days: 0}
 cds: {dataset_short_name: reanalysis-era5-single-levels, product_type: reanalysis, variable: leaf_area_index_low_vegetation, daily_statistic: instantaneous_00_utc, time_zone: utc+00:00, frequency: monthly, data_format: netcdf, download_format: unarchived, request_chunk: month}
 processing: {source_units: m2 m-2, output_units: m2 m-2, unit_conversion: identity, resampling_method: bilinear, overwrite_observed_overlap: true, datatype: FLT4S, naflag: -9999}
 weekly: {aggregation: mean, require_complete_week: true, expected_days: 7}

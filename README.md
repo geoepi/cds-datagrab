@@ -62,13 +62,13 @@ bash hpc/submit_all_products.sh --through 2026-07-10 --mode update
 
 One operator command is not one CDS request: it submits four standalone source workflows and the shared ERA5-Land source family concurrently. After all five source jobs, five aggregation jobs run with an `afterok` dependency; final portfolio validation runs only after all aggregation jobs succeed. Valid daily/weekly artifacts are reused by existing child logic, and ordinary portfolio updates do not use `--overwrite`.
 
-Each update writes `runs/production/_portfolio/<run_id>/portfolio_manifest.json`, including source and aggregation job IDs, dependencies, common dates, per-product counts, validation status, and failure stage/message. A failed source or aggregation stage is safe to retry with a new portfolio run using the same external root; no valid TIFFs are deleted. This orchestration layer is not Atlas-validated until a real Atlas portfolio test has been completed.
+Each update writes `runs/production/_portfolio/<run_id>/portfolio_manifest.json`, including source and aggregation job IDs, dependencies, common dates, per-product counts, validation status, and failure stage/message. A failed source or aggregation stage is safe to retry with a new portfolio run using the same external root; no valid TIFFs are deleted. If Slurm cancels a dependent validator, the manifest remains `validation_submitted` until the validator starts or the optional reconciliation utility records `cancelled`/`failed`.
 
 ## Production status
 
-The ERA5-Land daily-mean family has been successfully exercised on Atlas. The validated historical daily inventory contains 1,654 daily TIFFs per ERA5-Land product, 13,232 total, covering **2022-01-01 through 2026-07-12**. This is the current produced/observed endpoint.
+The production portfolio has been successfully exercised on Atlas. Validation run `20260831T181051Z_portfolio` completed successfully through **2026-07-26** for all **12 products**: four standalone products and eight ERA5-Land products. All products passed sidecar, geometry, and weekly validation, with **238 complete ISO weeks**. The ERA5-Land daily inventory contains 1,668 daily TIFFs per product (13,344 total) for the validated period; the portfolio validation also covers the four standalone products and their synchronized weekly outputs.
 
-The configured horizon remains **2022-01-01 through 2026-12-31**. Dates after 2026-07-12 are configured dates, not evidence that daily rasters have been observed or produced. Weekly production was not started in this production pass. The expected validation target for the currently produced daily period is 237 complete ISO weeks per product, or 1,896 weekly TIFFs across the eight products.
+The configured hard horizon remains **2022-01-01 through 2026-12-31**. Dates after 2026-07-26 are configured future dates, not evidence that data are available or validated. `temporal.observed_end` records the latest operator-confirmed endpoint and is currently 2026-07-26.
 
 ## Atlas installation and preflight
 
@@ -81,10 +81,10 @@ export HOME_R_LIB=/home/john.humphreys/R/x86_64-pc-linux-gnu-library/4.5
 export R_LIBS_USER="${CDS_DATAGRAB_R_LIB}:${HOME_R_LIB}"
 unset R_LIBS_SITE
 bash hpc/install_cdsdatagrab_atlas.sh "$REPO_DIR"
-REPO_DIR="$REPO_DIR" Rscript hpc/preflight_cdsdatagrab.R
+Rscript "$REPO_DIR/hpc/preflight_cdsdatagrab.R"
 ```
 
-The source checkout commit and `.cds-datagrab-installed-commit` must match before execution. Planning and preflight do not contact CDS. Keep `ecmwfr_PAT` in a secure environment and never print or commit its value.
+The source checkout commit and `.cds-datagrab-installed-commit` must match before execution; reinstall with the command above when they differ. Planning and preflight do not contact CDS. Keep `ecmwfr_PAT` in a secure environment and never print or commit its value.
 
 ## Common execution modes
 
@@ -116,12 +116,22 @@ Keep the same external root and do not delete valid TIFFs during recovery. A com
 
 When the 55 monthly source archives are already valid locally, do not repeat stage or retrieve merely because local processing needs to resume. Inspect the request registry and run manifest, rerun `--process`, and use the 72-hour historical process/full wrapper when running the established Atlas configuration. See [the operator runbook](docs/operator_runbook.md) and [the request lifecycle](docs/era5land_request_lifecycle.md).
 
+For a submitted portfolio whose dependency chain may have been cancelled, inspect its state without changing it:
+
+```bash
+Rscript scripts/reconcile_portfolio_manifest.R --manifest "$CDS_DATAGRAB_ROOT/runs/production/_portfolio/<run_id>/portfolio_manifest.json"
+```
+
+Add `--apply` only after reviewing the reported Slurm states. This records terminal cancellation/failure state; it is optional and is not required for successful production execution.
+
 ## Diagnostics and recovery tools
 
 | Tool | Purpose and safety |
 |---|---|
-| `scripts/debug_era5land_slice.R` | Preferred first diagnostic for one cached product/date before a broad family rerun. It contacts no CDS, but writes one selected daily output, sidecar, and diagnostic run under the external root. Invocation: `Rscript scripts/debug_era5land_slice.R --config config/era5land_daily_mean_utc06_production.yml --product era5land_tmean --date 2026-07-12 --output-root /project/disease_ecology/cds-datagrab-output`. |
+| `scripts/debug_era5land_slice.R` | Preferred first diagnostic for one cached product/date before a broad family rerun. It contacts no CDS, but writes one selected daily output, sidecar, and diagnostic run under the external root. Invocation: `Rscript scripts/debug_era5land_slice.R --config config/era5land_daily_mean_utc06_production.yml --product era5land_tmean --date 2026-07-26 --output-root /project/disease_ecology/cds-datagrab-output`. |
 | `scripts/repair_era5land_daily_sidecar_provenance.R` | Defaults to a dry-run audit. `--apply` atomically updates whitelisted sidecar provenance fields only; TIFFs are not rewritten. `--start-date` and `--end-date` scope the operation. Ambiguous mappings fail rather than being guessed; repeated application is idempotent. Apply mode retains `diagnostics/era5land_daily_sidecar_provenance_repair.csv`. |
+| `scripts/backfill_daily_sidecars.R` | Maintenance utility for adding missing metadata sidecars to already validated daily TIFFs. Defaults to dry-run; `--apply` writes sidecars only, with `--start-date`/`--end-date` scoping. It does not repair raster values and is not part of routine portfolio updates. |
+| `scripts/reconcile_portfolio_manifest.R` | Optional Slurm-state audit for submitted portfolio manifests. Without `--apply` it is read-only; `--apply` records terminal `failed`/`cancelled` state without contacting CDS or submitting work. |
 | `scripts/audit_output_layout.R` | Read-only inventory/path audit. The default product set is the four standalone products, so pass `--product era5land_tmean` (and repeat for other family products) when auditing ERA5-Land. Invocation: `Rscript scripts/audit_output_layout.R --output-root /project/disease_ecology/cds-datagrab-output --profile production --product era5land_tmean`. |
 | `hpc/preflight_cdsdatagrab.R` | Read-only Atlas environment/package/commit check. It requires `CDS_DATAGRAB_R_LIB` and optionally uses `REPO_DIR`; it does not submit work or contact CDS. |
 | `hpc/plan_era5land_daily_mean.R` | Read-only family plan used by the wrapper. It reports effective dates, product count, complete weeks, weekly target, request hashes, and monthly request count. |

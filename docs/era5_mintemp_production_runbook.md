@@ -22,10 +22,10 @@ OBSERVED_END=2022-12-31 MODE=plan DRY_RUN=true bash hpc/submit_era5_mintemp_prod
 OBSERVED_END=2023-12-31 MODE=plan DRY_RUN=true bash hpc/submit_era5_mintemp_production.sh
 OBSERVED_END=2024-12-31 MODE=plan DRY_RUN=true bash hpc/submit_era5_mintemp_production.sh
 OBSERVED_END=2025-12-31 MODE=plan DRY_RUN=true bash hpc/submit_era5_mintemp_production.sh
-OBSERVED_END=2026-07-12 MODE=plan DRY_RUN=true bash hpc/submit_era5_mintemp_production.sh
+OBSERVED_END=2026-07-26 MODE=plan DRY_RUN=true bash hpc/submit_era5_mintemp_production.sh
 ```
 
-The planning summary records the effective range, monthly request count, complete and incomplete ISO weeks, request area, template checksum, and estimated raw-file count. For the full endpoint it should report 1,654 dates, 55 monthly requests, and 236 complete ISO weeks. For the 2022 endpoint it should report 365 dates and 12 monthly requests. January 1–2, 2022 is an incomplete ISO week; the first complete weekly raster is 2022-W01.
+The planning summary records the effective range, monthly request count, complete and incomplete ISO weeks, request area, template checksum, and estimated raw-file count. For the validated full endpoint it should report 1,668 dates, 55 monthly requests, and 238 complete ISO weeks. For the 2022 endpoint it should report 365 dates and 12 monthly requests. January 1–2, 2022 is an incomplete ISO week; the first complete weekly raster is 2022-W01.
 
 ## Cumulative backfill sequence
 
@@ -36,7 +36,7 @@ OBSERVED_END=2022-12-31 MODE=full DRY_RUN=false bash hpc/submit_era5_mintemp_pro
 OBSERVED_END=2023-12-31 MODE=full DRY_RUN=false bash hpc/submit_era5_mintemp_production.sh
 OBSERVED_END=2024-12-31 MODE=full DRY_RUN=false bash hpc/submit_era5_mintemp_production.sh
 OBSERVED_END=2025-12-31 MODE=full DRY_RUN=false bash hpc/submit_era5_mintemp_production.sh
-OBSERVED_END=2026-07-12 MODE=full DRY_RUN=false bash hpc/submit_era5_mintemp_production.sh
+OBSERVED_END=2026-07-26 MODE=full DRY_RUN=false bash hpc/submit_era5_mintemp_production.sh
 ```
 
 The wrapper submits `hpc/run_era5_mintemp.slurm`; it does not duplicate request, download, processing, or aggregation logic. A later stage may be submitted only after the preceding run has `pipeline_status: success` in its `run_manifest.json` and its final validation is successful.
