@@ -1,1 +1,0 @@
-test_that("estimated files are excluded from donors", { d<-tempfile(); dir.create(d); file.create(file.path(d,"mintemp_2026-01-01_est.tif")); i<-inventory_grid_directory(d,"mintemp","daily"); expect_length(build_daily_climatology(i,NULL),0) })

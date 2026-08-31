@@ -37,6 +37,7 @@ secrets.yaml
 /local
 .Rcheck/
 *.Rcheck/
+..Rcheck/
 *.tar.gz
 .r_lib/
 *.tif

@@ -8,6 +8,13 @@ HOME_R_LIB="${HOME_R_LIB:-/home/john.humphreys/R/x86_64-pc-linux-gnu-library/4.5
 R_LIBS_USER="${R_LIBS_USER:-${CDS_DATAGRAB_R_LIB}:${HOME_R_LIB}}"
 unset R_LIBS_SITE
 
+cds_datagrab_r_lib_separator() {
+  case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*) printf ';' ;;
+    *) printf ':' ;;
+  esac
+}
+
 cds_datagrab_load_atlas_modules() {
   module purge
   module load r/4.5
@@ -119,7 +126,7 @@ cds_datagrab_prepare_environment() {
   repo_abs="$(cd "$REPO_DIR" && pwd -P)"; root_abs="$(mkdir -p "$CDS_DATAGRAB_ROOT" && cd "$CDS_DATAGRAB_ROOT" && pwd -P)"
   [[ "$root_abs" != "$repo_abs" && "$root_abs" != "$repo_abs"/* ]] || { echo "Output root must be outside the repository checkout" >&2; return 2; }
   CDS_DATAGRAB_R_LIB="${CDS_DATAGRAB_R_LIB:?CDS_DATAGRAB_R_LIB must point to the external installed cdsdatagrab library}"
-  R_LIBS_USER="${CDS_DATAGRAB_R_LIB}:${HOME_R_LIB}"
+  R_LIBS_USER="${CDS_DATAGRAB_R_LIB}$(cds_datagrab_r_lib_separator)${HOME_R_LIB}"
   export REPO_DIR CONFIG PROFILE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB HOME_R_LIB R_LIBS_USER
   unset R_LIBS_SITE
   cds_datagrab_validate_root_marker
@@ -149,7 +156,7 @@ cds_datagrab_prepare_plan_environment() {
   root_abs="$(realpath -m -- "$CDS_DATAGRAB_ROOT")"
   [[ "$root_abs" != "$repo_abs" && "$root_abs" != "$repo_abs"/* ]] || { echo "Output root must be outside the repository checkout" >&2; return 2; }
   CDS_DATAGRAB_R_LIB="${CDS_DATAGRAB_R_LIB:?CDS_DATAGRAB_R_LIB must point to the external installed cdsdatagrab library}"
-  R_LIBS_USER="${CDS_DATAGRAB_R_LIB}:${HOME_R_LIB}"
+  R_LIBS_USER="${CDS_DATAGRAB_R_LIB}$(cds_datagrab_r_lib_separator)${HOME_R_LIB}"
   export REPO_DIR CONFIG PROFILE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB HOME_R_LIB R_LIBS_USER
   unset R_LIBS_SITE
   if [[ -e "$CDS_DATAGRAB_ROOT/.cds-datagrab-root" ]]; then

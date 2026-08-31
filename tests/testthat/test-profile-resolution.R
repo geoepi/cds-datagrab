@@ -46,15 +46,17 @@ run_profile_environment <- function(config, profile = NULL, absolute = FALSE) {
 
 test_that("all tracked YAML configurations use project.profile and both YAML styles are present", {
   files <- list.files(package_file("config"), pattern = "[.]ya?ml$", full.names = TRUE)
-  configs <- lapply(files, yaml::read_yaml)
+  product_files <- files[basename(files) != "production_portfolio.yml"]
+  configs <- lapply(product_files, yaml::read_yaml)
   profiles <- vapply(configs, function(x) {
     if (is.null(x$project$profile)) NA_character_ else as.character(x$project$profile)
   }, character(1))
   expect_true(all(profiles %in% c("smoke", "production")))
   expect_true(all(vapply(configs, function(x) !is.null(x$project$profile), logical(1))))
-  text <- vapply(files, function(x) paste(readLines(x, warn = FALSE), collapse = "\n"), character(1))
+  text <- vapply(product_files, function(x) paste(readLines(x, warn = FALSE), collapse = "\n"), character(1))
   expect_true(any(grepl("(?m)^project:[[:space:]]*\\{", text, perl = TRUE)))
   expect_true(any(grepl("(?m)^project:[[:space:]]*$", text, perl = TRUE)))
+  expect_identical(yaml::read_yaml(package_file("config", "production_portfolio.yml"))$profile, "production")
 })
 test_that("structured profile resolution handles family configs, paths, normalization, and misleading filenames", {
   smoke <- package_file("config", "era5land_daily_mean_utc06_smoke.yml")
