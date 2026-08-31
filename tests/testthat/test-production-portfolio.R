@@ -109,6 +109,28 @@ test_that("portfolio cumulative validation reports only true extras and historic
   expect_true(all(vapply(missing_week$products, function(x) length(x$weekly_extra) == 0L, logical(1))))
 })
 
+test_that("final portfolio validation uses the cumulative inventory scope for a one-day rerun", {
+  definition_path <- package_file("config", "production_portfolio.yml")
+  definition <- portfolio_read_definition(definition_path)
+  attr(definition, "config_path") <- definition_path
+  output_root <- withr::local_tempdir()
+  plan <- portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-26", output_root = output_root)
+  expect_identical(plan$incremental_work_start, "2022-01-01")
+  plan$common_start <- "2026-07-26"
+  plan$incremental_work_start <- "2026-07-26"
+  plan$incremental_work_end <- "2026-07-26"
+  expect_identical(plan$portfolio_inventory_start, "2022-01-01")
+  expect_identical(plan$portfolio_inventory_end, "2026-07-26")
+  expect_equal(plan$cumulative_complete_iso_week_count, 238L)
+
+  result <- portfolio_validate_output_root(plan, output_root, repo_root = package_root())
+  expect_identical(result$status, "failed")
+  expect_identical(result$portfolio_inventory_start, "2022-01-01")
+  expect_identical(result$portfolio_inventory_end, "2026-07-26")
+  expect_equal(result$complete_iso_week_count, 238L)
+  expect_false(any(vapply(result$products, function(x) grepl("object 'inventory_start' not found", x$failure_message %||% "", fixed = TRUE), logical(1))))
+})
+
 test_that("portfolio wrapper exposes read-only plan and dependency structure", {
   script <- paste(readLines(package_file("hpc", "submit_all_products.sh"), warn = FALSE), collapse = "\n")
   expect_true(grepl("--through latest-common|YYYY-MM-DD", script, fixed = TRUE))

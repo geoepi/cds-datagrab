@@ -254,6 +254,10 @@ portfolio_validate_synchronization <- function(products, common_start, common_en
 
 portfolio_validate_output_root <- function(plan, output_root,
     repo_root = dirname(dirname(attr(plan, "config_path") %||% "config/production_portfolio.yml"))) {
+  work_start <- as.Date(plan$incremental_work_start %||% plan$common_start)
+  work_end <- as.Date(plan$incremental_work_end %||% plan$common_end)
+  portfolio_inventory_start <- as.Date(plan$portfolio_inventory_start %||% plan$common_start)
+  portfolio_inventory_end <- as.Date(plan$portfolio_inventory_end %||% plan$common_end)
   records <- lapply(plan$products, function(product) {
     cfg <- yaml::read_yaml(product$config)
     cfg$project$dataset_id <- product$product_id
@@ -266,23 +270,19 @@ portfolio_validate_output_root <- function(plan, output_root,
     profile <- as.character(cfg$project$profile %||% "production")
     daily <- portfolio_daily_files(output_root, profile, product$product_id, spec$daily_filename_prefix)
     weekly <- portfolio_weekly_files(output_root, profile, product$product_id, spec$weekly_filename_prefix)
-    work_start <- as.Date(plan$incremental_work_start %||% plan$common_start)
-    work_end <- as.Date(plan$incremental_work_end %||% plan$common_end)
-    inventory_start <- as.Date(plan$portfolio_inventory_start %||% plan$common_start)
-    inventory_end <- as.Date(plan$portfolio_inventory_end %||% plan$common_end)
-    expected_daily <- safe_date_sequence(inventory_start, inventory_end)
-    expected_weeks <- plan$cumulative_complete_iso_weeks %||% portfolio_complete_iso_weeks(inventory_start, inventory_end)
-    sidecar_ok <- function(paths, expected) {
-      if (!length(paths)) return(!length(expected))
+    expected_daily <- safe_date_sequence(portfolio_inventory_start, portfolio_inventory_end)
+    expected_weeks <- plan$cumulative_complete_iso_weeks %||% portfolio_complete_iso_weeks(portfolio_inventory_start, portfolio_inventory_end)
+    sidecar_ok <- function(paths, expected_count) {
+      if (!length(paths)) return(expected_count == 0L)
       all(vapply(paths, function(path) {
         sidecar <- paste0(path, ".json")
         if (!file.exists(sidecar)) return(FALSE)
         !is.null(tryCatch(jsonlite::read_json(sidecar, simplifyVector = FALSE), error = function(e) NULL))
       }, logical(1)))
     }
-    daily_in_range <- daily$records[daily$records$date >= min(inventory_start) & daily$records$date <= max(inventory_end), , drop = FALSE]
+    daily_in_range <- daily$records[daily$records$date >= min(portfolio_inventory_start) & daily$records$date <= max(portfolio_inventory_end), , drop = FALSE]
     weekly_in_range <- weekly$records[weekly$weeks %in% expected_weeks, , drop = FALSE]
-    sidecars_valid <- sidecar_ok(c(daily_in_range$path, weekly_in_range$path), c(expected_daily, expected_weeks))
+    sidecars_valid <- sidecar_ok(c(daily_in_range$path, weekly_in_range$path), length(expected_daily) + length(expected_weeks))
     geometry_valid <- FALSE
     value_valid <- FALSE
     weekly_valid <- TRUE
@@ -306,7 +306,7 @@ portfolio_validate_output_root <- function(plan, output_root,
       geometry_valid = geometry_valid, sidecars_valid = sidecars_valid,
       value_validation_valid = value_valid, weekly_validation_valid = weekly_valid)
   })
-  validation <- portfolio_validate_synchronization(records, work_start, work_end, inventory_start, inventory_end)
+  validation <- portfolio_validate_synchronization(records, work_start, work_end, portfolio_inventory_start, portfolio_inventory_end)
   for (i in seq_along(validation$products)) {
     validation$products[[i]]$geometry_valid <- records[[i]]$geometry_valid
     validation$products[[i]]$sidecars_valid <- records[[i]]$sidecars_valid
