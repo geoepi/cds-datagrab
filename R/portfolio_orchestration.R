@@ -387,3 +387,94 @@ portfolio_write_manifest <- function(manifest, path = file.path(manifest$manifes
   jsonlite::write_json(safe(manifest), path, pretty = TRUE, auto_unbox = TRUE, null = "null")
   invisible(path)
 }
+
+portfolio_classify_job_state <- function(state) {
+  if (is.null(state) || !length(state) || is.na(state[[1L]]) || !nzchar(as.character(state[[1L]]))) return("unknown")
+  state <- toupper(trimws(as.character(state[[1L]])))
+  state <- sub("[+].*$", "", state)
+  if (state == "COMPLETED") return("success")
+  if (state %in% c("RUNNING", "COMPLETING", "CONFIGURING", "SUSPENDED", "SIGNALING", "STAGE_OUT", "RESIZING")) return("running")
+  if (state %in% c("PENDING", "REQUEUED", "REQUEUE_FED", "RESV_DEL_HOLD")) return("submitted")
+  if (state %in% c("CANCELLED", "DEPENDENCY_NEVER_SATISFIED", "REVOKED")) return("cancelled")
+  if (state %in% c("FAILED", "TIMEOUT", "OUT_OF_MEMORY", "NODE_FAIL", "PREEMPTED", "BOOT_FAIL", "DEADLINE", "LAUNCH_FAILED", "SPECIAL_EXIT")) return("failed")
+  "unknown"
+}
+
+portfolio_manifest_job_ids <- function(manifest) {
+  ids <- c(unlist(manifest$source_job_ids %||% list(), use.names = FALSE),
+    unlist(manifest$aggregation_job_ids %||% list(), use.names = FALSE),
+    manifest$validation_job_id %||% character())
+  ids <- as.character(ids)
+  unique(ids[nzchar(ids) & !is.na(ids)])
+}
+
+portfolio_reconcile_manifest <- function(manifest, job_states) {
+  if (!is.list(manifest)) stop("manifest must be a list", call. = FALSE)
+  job_state_names <- names(job_states)
+  job_states <- as.character(job_states)
+  names(job_states) <- job_state_names
+  if (!length(job_states) || is.null(names(job_states))) stop("job_states must be a named vector", call. = FALSE)
+  job_states <- job_states[!is.na(names(job_states)) & nzchar(names(job_states))]
+  state_class <- vapply(job_states, portfolio_classify_job_state, character(1))
+  scheduler_states <- setNames(lapply(names(job_states), function(id) {
+    list(raw_state = unname(job_states[[id]]), state_class = state_class[[id]])
+  }), names(job_states))
+  manifest$scheduler_states <- scheduler_states
+
+  current <- as.character(manifest$status %||% "unknown")
+  if (current %in% c("success", "failed", "cancelled")) {
+    return(list(manifest = manifest, changed = FALSE, reason = "manifest already terminal", state_class = current))
+  }
+  lookup <- function(id) {
+    if (is.null(id) || !length(id) || is.na(id[[1L]]) || !nzchar(as.character(id[[1L]]))) return(list(raw = NA_character_, class = "unknown"))
+    key <- as.character(id[[1L]])
+    if (!key %in% names(job_states)) return(list(raw = NA_character_, class = "unknown"))
+    list(raw = unname(job_states[[key]]), class = unname(state_class[[key]]))
+  }
+  role_states <- function(ids) {
+    if (!length(ids)) return(list())
+    setNames(lapply(ids, lookup), names(ids))
+  }
+  source_states <- role_states(manifest$source_job_ids %||% list())
+  aggregation_states <- role_states(manifest$aggregation_job_ids %||% list())
+  validation <- lookup(manifest$validation_job_id)
+  bad <- function(states) length(states) && any(vapply(states, function(x) x$class %in% c("failed", "cancelled"), logical(1)))
+  describe <- function(role, states) {
+    if (!length(states)) return(character())
+    ids <- names(states)[vapply(states, function(x) x$class %in% c("failed", "cancelled"), logical(1))]
+    if (!length(ids)) return(character())
+    paste0(role, " ", ids, " (", vapply(states[ids], function(x) x$raw %||% "unknown", character(1)), ")")
+  }
+  upstream <- c(describe("source job", source_states), describe("aggregation job", aggregation_states))
+  changed <- FALSE
+  reason <- "no terminal lifecycle change"
+  if (validation$class == "running" && current == "validation_submitted") {
+    manifest$status <- "validation_running"
+    changed <- TRUE
+    reason <- "validation job is running"
+  } else if (validation$class == "cancelled") {
+    manifest$status <- "cancelled"
+    manifest$failure_stage <- if (length(upstream)) if (bad(source_states)) "source" else "aggregation" else "validation"
+    manifest$failure_message <- paste("Validation job", manifest$validation_job_id, "was cancelled before portfolio validation completed.",
+      if (length(upstream)) paste("Upstream terminal states:", paste(upstream, collapse = "; ")) else "Inspect the Slurm reason and dependency chain.")
+    manifest$completed_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
+    changed <- TRUE
+    reason <- "validation job was cancelled"
+  } else if (validation$class == "failed") {
+    manifest$status <- "failed"
+    manifest$failure_stage <- if (length(upstream)) if (bad(source_states)) "source" else "aggregation" else "validation"
+    manifest$failure_message <- paste("Portfolio validation job", manifest$validation_job_id, "did not complete successfully.",
+      if (length(upstream)) paste("Upstream terminal states:", paste(upstream, collapse = "; ")) else "Inspect the validation Slurm log.")
+    manifest$completed_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
+    changed <- TRUE
+    reason <- "validation job failed"
+  } else if (bad(source_states) || bad(aggregation_states)) {
+    manifest$status <- if (bad(source_states) && any(vapply(source_states, function(x) x$class == "cancelled", logical(1)))) "cancelled" else "failed"
+    manifest$failure_stage <- if (bad(source_states)) "source" else "aggregation"
+    manifest$failure_message <- paste("Portfolio dependency chain has terminal upstream states:", paste(upstream, collapse = "; "))
+    manifest$completed_at <- format(Sys.time(), tz = "UTC", usetz = TRUE)
+    changed <- TRUE
+    reason <- "upstream dependency failed or was cancelled"
+  }
+  list(manifest = manifest, changed = changed, reason = reason, state_class = manifest$status)
+}

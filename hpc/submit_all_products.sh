@@ -166,5 +166,5 @@ agg_mapping="${agg_mapping%,}"
 Rscript --vanilla "$REPO_DIR/scripts/portfolio_manifest.R" --operation update --manifest "$MANIFEST" --status aggregation_running --aggregation-jobs "$agg_mapping" >/dev/null
 aggregation_dependency="afterok:$(IFS=:; echo "${agg_dependency_ids[*]}")"
 validation_job="$(sbatch --parsable --dependency="$aggregation_dependency" --job-name="cds_portfolio_validate" --output="$CDS_DATAGRAB_ROOT/logs/slurm/production/cds_portfolio_validate_%j.out" --error="$CDS_DATAGRAB_ROOT/logs/slurm/production/cds_portfolio_validate_%j.err" --export=ALL,REPO_DIR,PORTFOLIO_MANIFEST="$MANIFEST",CDS_DATAGRAB_R_LIB="$CDS_DATAGRAB_R_LIB" "$REPO_DIR/hpc/run_portfolio_validate.slurm")"
-Rscript --vanilla "$REPO_DIR/scripts/portfolio_manifest.R" --operation update --manifest "$MANIFEST" --status validation_running --validation-job "$validation_job" >/dev/null
+Rscript --vanilla "$REPO_DIR/scripts/portfolio_manifest.R" --operation update --manifest "$MANIFEST" --status validation_submitted --validation-job "$validation_job" >/dev/null
 printf 'Aggregation jobs dependency: %s\nValidation job: %s\nManifest: %s\n' "$aggregation_dependency" "$validation_job" "$MANIFEST"

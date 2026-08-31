@@ -54,7 +54,7 @@ if (length(aggregation_jobs)) {
   manifest$dependencies$validation <- paste0("afterok:", paste(unlist(aggregation_jobs, use.names = FALSE), collapse = ":"))
   manifest$status <- if (is.null(status)) "aggregation_running" else status
 }
-if (!is.null(validation_job)) { manifest$dependencies$validation_job <- "afterok:aggregation_jobs"; manifest$status <- if (is.null(status)) "validation_running" else status }
+if (!is.null(validation_job)) { manifest$dependencies$validation_job <- "afterok:aggregation_jobs"; manifest$status <- if (is.null(status)) "validation_submitted" else status }
 if (!is.null(status)) manifest$status <- status
 failure_stage <- value("--failure-stage")
 failure_message <- value("--failure-message")
