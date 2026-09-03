@@ -10,8 +10,10 @@ DRY_RUN="${DRY_RUN:-false}"
 OBSERVED_END="${OBSERVED_END:-}"
 START_DATE="${START_DATE:-}"
 END_DATE="${END_DATE:-}"
+CHIME_EXECUTION_ID="${CHIME_EXECUTION_ID:-}"
 
 [[ "$PROFILE" == production ]] || { echo "PROFILE must be production" >&2; exit 2; }
+cds_datagrab_validate_chime_execution_id
 [[ -n "$OBSERVED_END" ]] || { echo "OBSERVED_END is required for production submissions" >&2; exit 2; }
 if ! normalized_end=$(date -d "$OBSERVED_END" +%F 2>/dev/null); then
   echo "OBSERVED_END must be a valid ISO date: $OBSERVED_END" >&2; exit 2
@@ -33,5 +35,5 @@ fi
 
 # The shared wrapper owns submission and pipeline logic; this wrapper only supplies
 # production defaults and validates the explicit endpoint/root contract.
-export REPO_DIR CDS_DATAGRAB_ROOT PROFILE CONFIG MODE DRY_RUN OBSERVED_END START_DATE END_DATE
+export REPO_DIR CDS_DATAGRAB_ROOT PROFILE CONFIG MODE DRY_RUN OBSERVED_END START_DATE END_DATE CHIME_EXECUTION_ID
 exec "$REPO_DIR/hpc/submit_era5_mintemp.sh"

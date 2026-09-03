@@ -182,6 +182,28 @@ test_that("portfolio manifest records explicit endpoint provenance and source ou
   expect_true("source_job_outcomes" %in% names(manifest))
 })
 
+test_that("portfolio manifest carries optional CHIME execution provenance", {
+  definition <- portfolio_read_definition(package_file("config", "production_portfolio.yml"))
+  attr(definition, "config_path") <- package_file("config", "production_portfolio.yml")
+  plan <- portfolio_resolve_plan(definition, through = "explicit", explicit_end = "2026-07-27")
+
+  withr::local_envvar(CHIME_EXECUTION_ID = NA_character_)
+  standalone <- portfolio_new_manifest(plan, withr::local_tempdir(), run_id = "standalone")
+  expect_null(standalone$chime_execution_id)
+
+  withr::local_envvar(CHIME_EXECUTION_ID = "exec-test-123")
+  correlated <- portfolio_new_manifest(plan, withr::local_tempdir(), run_id = "correlated")
+  expect_identical(correlated$chime_execution_id, "exec-test-123")
+  manifest_path <- file.path(withr::local_tempdir(), "portfolio_manifest.json")
+  portfolio_write_manifest(correlated, manifest_path)
+  encoded <- jsonlite::read_json(manifest_path, simplifyVector = FALSE)
+  expect_true("chime_execution_id" %in% names(encoded))
+  expect_identical(encoded$chime_execution_id, "exec-test-123")
+
+  withr::local_envvar(CHIME_EXECUTION_ID = "exec-test\nunsafe")
+  expect_error(portfolio_new_manifest(plan, withr::local_tempdir(), run_id = "invalid"), "CHIME_EXECUTION_ID")
+})
+
 test_that("portfolio source commands use each wrapper's full execution path", {
   script <- paste(readLines(package_file("hpc", "submit_all_products.sh"), warn = FALSE), collapse = "\n")
   definition <- portfolio_read_definition(package_file("config", "production_portfolio.yml"))
@@ -213,6 +235,7 @@ test_that("ERA5-Land aggregation preserves the complete product family through S
   expect_true(grepl('PRODUCT_IDS="$products" START_DATE=', script, fixed = TRUE))
   expect_true(grepl('--export=ALL "$REPO_DIR/hpc/run_portfolio_aggregate_era5land.slurm"', script, fixed = TRUE))
   expect_false(grepl('--export=ALL,REPO_DIR,CONFIG="$config",PRODUCT_IDS="$products"', script, fixed = TRUE))
+  expect_match(script, "CHIME_EXECUTION_ID")
 })
 
 test_that("portfolio validation exposes exact missing daily and weekly sidecars", {

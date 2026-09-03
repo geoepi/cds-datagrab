@@ -16,10 +16,10 @@ SBATCH_SCRIPT="${SBATCH_SCRIPT:-$REPO_DIR/hpc/run_era5_variable.slurm}"
 cds_datagrab_prepare_environment
 if [[ -n "$START_DATE" || -n "$END_DATE" ]]; then cds_datagrab_validate_window; fi
 mkdir -p "$CDS_DATAGRAB_ROOT/logs/slurm/$PROFILE"
-export REPO_DIR PROFILE CONFIG MODE DRY_RUN OBSERVED_END FUTURE_END START_DATE END_DATE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB R_LIBS_USER
+export REPO_DIR PROFILE CONFIG MODE DRY_RUN OBSERVED_END FUTURE_END START_DATE END_DATE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB R_LIBS_USER CHIME_EXECUTION_ID
 if [[ "${DIRECT_EXECUTION:-false}" == "true" ]]; then
   bash "$SBATCH_SCRIPT"
   exit 0
 fi
-job_id=$(sbatch --parsable --job-name="$JOB_NAME" --output="$SLURM_OUTPUT" --error="$SLURM_ERROR" --export=ALL,CDS_DATAGRAB_ROOT="$CDS_DATAGRAB_ROOT",CDS_DATAGRAB_R_LIB="$CDS_DATAGRAB_R_LIB",R_LIBS_USER="$R_LIBS_USER",R_LIBS_SITE="${R_LIBS_SITE:-}",PROFILE="$PROFILE",CONFIG="$CONFIG",MODE="$MODE",DRY_RUN="$DRY_RUN",OBSERVED_END="$OBSERVED_END",FUTURE_END="$FUTURE_END",START_DATE="$START_DATE",END_DATE="$END_DATE" "$SBATCH_SCRIPT")
+job_id=$(sbatch --parsable --job-name="$JOB_NAME" --output="$SLURM_OUTPUT" --error="$SLURM_ERROR" --export=ALL,CDS_DATAGRAB_ROOT="$CDS_DATAGRAB_ROOT",CDS_DATAGRAB_R_LIB="$CDS_DATAGRAB_R_LIB",R_LIBS_USER="$R_LIBS_USER",R_LIBS_SITE="${R_LIBS_SITE:-}",PROFILE="$PROFILE",CONFIG="$CONFIG",MODE="$MODE",DRY_RUN="$DRY_RUN",OBSERVED_END="$OBSERVED_END",FUTURE_END="$FUTURE_END",START_DATE="$START_DATE",END_DATE="$END_DATE",CHIME_EXECUTION_ID="$CHIME_EXECUTION_ID" "$SBATCH_SCRIPT")
 printf 'submitted job ID: %s\njob name: %s\nconfiguration: %s\nmode: %s\nconfigured/effective window override: %s to %s\noutput root: %s\nstdout path pattern: %s\nstderr path pattern: %s\n' "$job_id" "$JOB_NAME" "$CONFIG" "$MODE" "${START_DATE:-configured}" "${END_DATE:-configured}" "$CDS_DATAGRAB_ROOT" "$SLURM_OUTPUT" "$SLURM_ERROR"
