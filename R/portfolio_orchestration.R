@@ -355,12 +355,23 @@ portfolio_validate_output_root <- function(plan, output_root,
 
 portfolio_manifest_path <- function(output_root, run_id) file.path(output_root, "runs", "production", "_portfolio", run_id, "portfolio_manifest.json")
 
+portfolio_validate_chime_execution_id <- function(value = Sys.getenv("CHIME_EXECUTION_ID", unset = "")) {
+  if (length(value) != 1L || is.na(value) || !nzchar(value)) return(NULL)
+  value <- as.character(value)
+  if (nchar(value, type = "bytes") > 128L || !grepl("^[A-Za-z0-9_.:-]+$", value, perl = TRUE)) {
+    stop("CHIME_EXECUTION_ID must be a non-empty identifier of at most 128 safe characters", call. = FALSE)
+  }
+  value
+}
+
 portfolio_new_manifest <- function(plan, output_root, run_id = NULL, source_commit = "unavailable", installed_commit = "unavailable") {
   if (is.null(run_id)) run_id <- paste0(format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC"), "_portfolio")
+  chime_execution_id <- portfolio_validate_chime_execution_id()
   availability_names <- .portfolio_availability_names(plan$availability)
   known_observed_end <- .portfolio_availability_field(plan$availability, "known_observed_end")
   availability_status <- .portfolio_availability_field(plan$availability, "availability_status")
   list(run_id = run_id, started_at = format(Sys.time(), tz = "UTC", usetz = TRUE), completed_at = NULL,
+    chime_execution_id = chime_execution_id,
     source_git_commit = source_commit, installed_git_commit = installed_commit, profile = "production", output_root = output_root,
     endpoint_policy = plan$endpoint_policy, requested_through = plan$requested_through,
     requested_end = plan$requested_end, requested_explicit_end = plan$requested_explicit_end,

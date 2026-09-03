@@ -102,6 +102,13 @@ cds_datagrab_validate_root_marker() {
   if [[ -e "$marker" ]]; then grep -q '"application"[[:space:]]*:[[:space:]]*"cds-datagrab"' "$marker" || { echo "Invalid cds-datagrab root marker: $marker" >&2; return 2; }; fi
 }
 
+cds_datagrab_validate_chime_execution_id() {
+  local value="${CHIME_EXECUTION_ID:-}"
+  [[ -z "$value" ]] && return 0
+  [[ "${#value}" -le 128 ]] || { echo "CHIME_EXECUTION_ID must be at most 128 characters" >&2; return 2; }
+  [[ "$value" =~ ^[A-Za-z0-9_.:-]+$ ]] || { echo "CHIME_EXECUTION_ID contains unsafe identifier characters" >&2; return 2; }
+}
+
 cds_datagrab_prepare_environment() {
   REPO_DIR="${REPO_DIR:-$(cds_datagrab_repo_dir)}"
   REPO_DIR="$(cd -- "$REPO_DIR" && pwd -P)"
@@ -121,13 +128,15 @@ cds_datagrab_prepare_environment() {
   else
     PROFILE="$config_profile"
   fi
+  cds_datagrab_validate_chime_execution_id
+  CHIME_EXECUTION_ID="${CHIME_EXECUTION_ID:-}"
   cds_datagrab_resolve_root "$PROFILE"
   local repo_abs root_abs
   repo_abs="$(cd "$REPO_DIR" && pwd -P)"; root_abs="$(mkdir -p "$CDS_DATAGRAB_ROOT" && cd "$CDS_DATAGRAB_ROOT" && pwd -P)"
   [[ "$root_abs" != "$repo_abs" && "$root_abs" != "$repo_abs"/* ]] || { echo "Output root must be outside the repository checkout" >&2; return 2; }
   CDS_DATAGRAB_R_LIB="${CDS_DATAGRAB_R_LIB:?CDS_DATAGRAB_R_LIB must point to the external installed cdsdatagrab library}"
   R_LIBS_USER="${CDS_DATAGRAB_R_LIB}$(cds_datagrab_r_lib_separator)${HOME_R_LIB}"
-  export REPO_DIR CONFIG PROFILE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB HOME_R_LIB R_LIBS_USER
+  export REPO_DIR CONFIG PROFILE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB HOME_R_LIB R_LIBS_USER CHIME_EXECUTION_ID
   unset R_LIBS_SITE
   cds_datagrab_validate_root_marker
 }
@@ -151,13 +160,15 @@ cds_datagrab_prepare_plan_environment() {
   else
     PROFILE="$config_profile"
   fi
+  cds_datagrab_validate_chime_execution_id
+  CHIME_EXECUTION_ID="${CHIME_EXECUTION_ID:-}"
   cds_datagrab_resolve_root "$PROFILE"
   repo_abs="$(cd "$REPO_DIR" && pwd -P)"
   root_abs="$(realpath -m -- "$CDS_DATAGRAB_ROOT")"
   [[ "$root_abs" != "$repo_abs" && "$root_abs" != "$repo_abs"/* ]] || { echo "Output root must be outside the repository checkout" >&2; return 2; }
   CDS_DATAGRAB_R_LIB="${CDS_DATAGRAB_R_LIB:?CDS_DATAGRAB_R_LIB must point to the external installed cdsdatagrab library}"
   R_LIBS_USER="${CDS_DATAGRAB_R_LIB}$(cds_datagrab_r_lib_separator)${HOME_R_LIB}"
-  export REPO_DIR CONFIG PROFILE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB HOME_R_LIB R_LIBS_USER
+  export REPO_DIR CONFIG PROFILE CDS_DATAGRAB_ROOT CDS_DATAGRAB_R_LIB HOME_R_LIB R_LIBS_USER CHIME_EXECUTION_ID
   unset R_LIBS_SITE
   if [[ -e "$CDS_DATAGRAB_ROOT/.cds-datagrab-root" ]]; then
     cds_datagrab_validate_root_marker

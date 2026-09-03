@@ -10,12 +10,12 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-${SLURM_SUBMIT_DIR}}"
 source "$REPO_DIR/hpc/lib/cds_datagrab_env.sh"
 cds_datagrab_load_atlas_modules
-CONFIG="${CONFIG:?CONFIG must be set}"; MODE="${MODE:-plan}"; DRY_RUN="${DRY_RUN:-true}"; OBSERVED_END="${OBSERVED_END:-auto}"; FUTURE_END="${FUTURE_END:-}"; START_DATE="${START_DATE:-}"; END_DATE="${END_DATE:-}"
+CONFIG="${CONFIG:?CONFIG must be set}"; MODE="${MODE:-plan}"; DRY_RUN="${DRY_RUN:-true}"; OBSERVED_END="${OBSERVED_END:-auto}"; FUTURE_END="${FUTURE_END:-}"; START_DATE="${START_DATE:-}"; END_DATE="${END_DATE:-}"; CHIME_EXECUTION_ID="${CHIME_EXECUTION_ID:-}"
 CDS_DATAGRAB_ROOT="${CDS_DATAGRAB_ROOT:?CDS_DATAGRAB_ROOT must be set}"
 CDS_DATAGRAB_R_LIB="${CDS_DATAGRAB_R_LIB:?CDS_DATAGRAB_R_LIB must point to the external installed cdsdatagrab library}"
 case ":${R_LIBS_USER:-}:" in *":$CDS_DATAGRAB_R_LIB:"*) ;; "::") R_LIBS_USER="$CDS_DATAGRAB_R_LIB" ;; *) R_LIBS_USER="$CDS_DATAGRAB_R_LIB:${R_LIBS_USER}" ;; esac
 R_LIBS_SITE="${R_LIBS_SITE:-}"
-export CDS_DATAGRAB_R_LIB R_LIBS_USER R_LIBS_SITE
+export CDS_DATAGRAB_R_LIB R_LIBS_USER R_LIBS_SITE CHIME_EXECUTION_ID
 case "${DRY_RUN,,}" in true|1|yes) EXECUTION_FLAG="--dry-run" ;; false|0|no) EXECUTION_FLAG="--execute" ;; *) echo "DRY_RUN must be true or false; received: ${DRY_RUN}" >&2; exit 2 ;; esac
 cd "$REPO_DIR"
 hostname; date; git status --short || true; git rev-parse HEAD || true; module list 2>&1; R --version

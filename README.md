@@ -64,6 +64,14 @@ One operator command is not one CDS request: it submits four standalone source w
 
 Each update writes `runs/production/_portfolio/<run_id>/portfolio_manifest.json`, including source and aggregation job IDs, dependencies, common dates, per-product counts, validation status, and failure stage/message. A failed source or aggregation stage is safe to retry with a new portfolio run using the same external root; no valid TIFFs are deleted. If Slurm cancels a dependent validator, the manifest remains `validation_submitted` until the validator starts or the optional reconciliation utility records `cancelled`/`failed`.
 
+When launched by CHIME, the approved execution ID is propagated as the
+optional `CHIME_EXECUTION_ID` environment variable through the registered
+wrappers and Slurm submissions. New portfolio manifests copy it to the
+top-level `chime_execution_id` field. This is opaque provenance for
+cross-system correlation only: it does not affect the cds-datagrab run ID,
+processing, product selection, expected counts, validation, or portfolio
+status. Standalone runs leave the field `null`.
+
 ## Production status
 
 The production portfolio has been successfully exercised on Atlas. Validation run `20260831T181051Z_portfolio` completed successfully through **2026-07-26** for all **12 products**: four standalone products and eight ERA5-Land products. All products passed sidecar, geometry, and weekly validation, with **238 complete ISO weeks**. The ERA5-Land daily inventory contains 1,668 daily TIFFs per product (13,344 total) for the validated period; the portfolio validation also covers the four standalone products and their synchronized weekly outputs.

@@ -64,6 +64,13 @@ The five source jobs are submitted concurrently. Each standalone job uses its ex
 
 The durable parent record is `runs/production/_portfolio/<run_id>/portfolio_manifest.json`. It records requested and resolved dates, source/installed commits, source and aggregation job IDs, dependency strings, per-product expected/present/missing counts, complete-week count, and final status. Submission status is not success: `validation_submitted` means Slurm accepted the validator but it has not been observed running; `validation_running` means the validator has started; `success` requires all source work, all aggregation work, and final validation. If a child fails or a dependent validator is cancelled, inspect the normal run manifests and Slurm logs, then use the optional reconciliation utility with the same external root. Valid TIFFs are reused; ordinary updates do not use `--overwrite`. The validated portfolio baseline is run `20260831T181051Z_portfolio`, through 2026-07-26 with 238 complete ISO weeks and 12 products.
 
+For a CHIME-triggered portfolio, the wrapper receives optional
+`CHIME_EXECUTION_ID` and persists it as the top-level
+`portfolio_manifest.json -> chime_execution_id` field. It is provenance only
+and does not change workflow behavior. Without the environment variable, new
+manifests write `chime_execution_id: null`; independently launched runs need
+no CHIME dependency.
+
 ## Portfolio recovery
 
 1. For a source/package commit mismatch, run `bash hpc/install_cdsdatagrab_atlas.sh "$REPO_DIR"` and then `Rscript "$REPO_DIR/hpc/preflight_cdsdatagrab.R"`; execution is allowed only when the checkout and installed-package commits agree.
