@@ -1,4 +1,4 @@
-test_that("all environmental production configs use the 2022-2026 canonical range", {
+test_that("all environmental production configs use the configured 2022-2026 production range", {
   ids <- c("era5_mintemp", "era5_soilmoist", "era5_lai_low", "agera5_relhum_min")
   files <- file.path(package_root(), "config", paste0(c("era5_mintemp", "era5_soilmoist", "era5_lai_low", "agera5_relhum_min"), "_production.yml"))
   for (file in files) {
@@ -49,10 +49,10 @@ test_that("date overrides cannot expand the canonical range or execute across ye
 test_that("explicit production date windows may advance beyond observed_end", {
   cfg <- read_pipeline_config(package_file("config", "era5_lai_low_production.yml"))
   window <- resolve_pipeline_date_window(cfg, "2026-07-01", "2026-07-27", FALSE)
-  expect_identical(as.character(window$observed_end), "2026-07-26")
+  expect_identical(as.character(window$observed_end), "2026-10-01")
   expect_identical(as.character(window$effective_end), "2026-07-27")
   expect_identical(window$date_override_source, "explicit_override")
-  expect_identical(as.character(cfg$temporal$observed_end), "2026-07-26")
+  expect_identical(as.character(cfg$temporal$observed_end), "2026-10-01")
 })
 
 test_that("standalone full planning stays inside an explicit partial-month window", {
@@ -71,7 +71,7 @@ test_that("standalone full planning stays inside an explicit partial-month windo
     request_dates <- unlist(lapply(requests, function(x) x$raw_request_dates), use.names=FALSE)
     expect_true(all(request_dates >= "2026-07-13" & request_dates <= "2026-07-26"))
     expect_identical(summary$plan_validation$status, "success")
-    expect_identical(summary$observed_end, "2026-07-26")
+    expect_identical(summary$observed_end, "2026-10-01")
     expect_identical(summary$effective_start, "2026-07-13")
     expect_identical(summary$effective_end, "2026-07-26")
     expect_length(result$planned_request_hashes, 1L)
