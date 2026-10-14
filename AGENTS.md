@@ -1,6 +1,6 @@
 # cds-datagrab repository instructions
 
-These instructions supplement the global Codex instructions. Keep repository
+These instructions define repository-specific operating requirements. Keep repository
 behavior aligned with the authoritative files named below; do not turn this
 file into a duplicate operator manual.
 
