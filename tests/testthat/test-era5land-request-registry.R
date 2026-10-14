@@ -98,8 +98,8 @@ test_that("expired jobs retain provenance and partial archives remain retryable"
 
 test_that("current production-shaped inventory recognizes thirteen cached months", {
   paths <- local_registry_paths("production"); cfg <- read_pipeline_config(package_file("config", "era5land_daily_mean_utc06_production.yml")); dates <- era5land_expected_dates(cfg, dry_run = FALSE); requests <- build_era5land_daily_mean_requests(dates, c(43, -127, 42, -125), cfg)
-  expect_equal(length(requests), 55L)
+  expect_equal(length(requests), 58L)
   for (request in requests[seq_len(13L)]) make_registry_zip(file.path(paths$raw_dir, sub("[.]nc$", ".zip", request$target)))
   registry <- era5land_registry_reconcile(requests, era5land_empty_registry(), paths, cfg, persist = FALSE); inventory <- era5land_request_inventory(requests, registry, paths)
-  expect_equal(inventory$source_requests_planned, 55L); expect_equal(inventory$raw_archives_valid, 13L); expect_equal(inventory$new_cds_requests_required, 42L); expect_equal(inventory$registered_pending_cds_jobs, 0L)
+  expect_equal(inventory$source_requests_planned, 58L); expect_equal(inventory$raw_archives_valid, 13L); expect_equal(inventory$new_cds_requests_required, 45L); expect_equal(inventory$registered_pending_cds_jobs, 0L)
 })
