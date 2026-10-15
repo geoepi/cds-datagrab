@@ -4,7 +4,9 @@
   "source_family", "request_hash", "start_date", "end_date", "request_days",
   "cds_job_id", "cds_job_url", "request_status", "submitted_at",
   "last_checked_at", "retrieved_at", "local_raw_path", "local_bytes",
-  "local_checksum", "error_class", "error_message", "source_commit",
+  "local_checksum", "error_class", "error_message",
+  "superseded_cds_job_id", "superseded_cds_job_url", "replacement_count",
+  "source_commit",
   "config_checksum"
 )
 
@@ -34,7 +36,9 @@ era5land_read_request_registry <- function(paths) {
     stop("Could not read ERA5-Land request registry: ", conditionMessage(e), call. = FALSE)
   })
   missing <- setdiff(.era5land_registry_columns, names(x))
-  if (length(missing)) stop("ERA5-Land request registry is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (length(missing)) {
+    for (nm in missing) x[[nm]] <- if (identical(nm, "replacement_count")) "0" else NA_character_
+  }
   x <- x[.era5land_registry_columns]
   if (!nrow(x)) return(era5land_empty_registry())
   x[] <- lapply(x, as.character)
@@ -47,7 +51,7 @@ era5land_write_request_registry <- function(registry, paths) {
   path <- era5land_registry_path(paths)
   fs::dir_create(dirname(path), recurse = TRUE)
   registry <- as.data.frame(registry, stringsAsFactors = FALSE)
-  for (nm in setdiff(.era5land_registry_columns, names(registry))) registry[[nm]] <- NA_character_
+  for (nm in setdiff(.era5land_registry_columns, names(registry))) registry[[nm]] <- if (identical(nm, "replacement_count")) "0" else NA_character_
   registry <- registry[.era5land_registry_columns]
   if (nrow(registry)) {
     registry[] <- lapply(registry, as.character)
@@ -86,6 +90,7 @@ era5land_registry_row_for_request <- function(request, config, status = "planned
     submitted_at = NA_character_, last_checked_at = NA_character_, retrieved_at = NA_character_,
     local_raw_path = NA_character_, local_bytes = NA_real_, local_checksum = NA_character_,
     error_class = NA_character_, error_message = NA_character_,
+    superseded_cds_job_id = NA_character_, superseded_cds_job_url = NA_character_, replacement_count = "0",
     source_commit = if (!is.null(attr(config, "project_root"))) era5land_source_commit(attr(config, "project_root")) else Sys.getenv("CDS_DATAGRAB_SOURCE_COMMIT", unset = "unknown"),
     config_checksum = cfg_checksum, stringsAsFactors = FALSE
   )
@@ -184,7 +189,8 @@ era5land_request_inventory <- function(requests, registry, paths) {
     local <- era5land_local_archive(request, paths)
     data.frame(request_hash = request$request_hash, start_date = request$request_start, end_date = request$request_end,
       local_valid = !is.null(local), local_path = local %||% "", registry_status = row$request_status,
-      has_job = era5land_has_value(row$cds_job_url), stringsAsFactors = FALSE)
+      has_job = era5land_has_value(row$cds_job_url), replacement_count = row$replacement_count,
+      stringsAsFactors = FALSE)
   })
   x <- if (length(rows)) do.call(rbind, rows) else data.frame()
   list(rows = x, source_requests_planned = nrow(x), raw_archives_valid = sum(x$local_valid),
@@ -193,6 +199,8 @@ era5land_request_inventory <- function(requests, registry, paths) {
     processing_cds_jobs = sum(!x$local_valid & x$has_job & x$registry_status == "processing"),
     failed_cds_jobs = sum(!x$local_valid & x$registry_status == "failed"),
     expired_cds_jobs = sum(!x$local_valid & x$registry_status == "expired"),
+    artifact_unavailable_cds_jobs = sum(!x$local_valid & x$registry_status == "artifact_unavailable"),
+    replacement_requests_required = sum(!x$local_valid & x$registry_status == "artifact_unavailable"),
     new_cds_requests_required = sum(!x$local_valid & !x$has_job),
     retrievals_ready = sum(!x$local_valid & x$registry_status == "ready"))
 }
@@ -229,13 +237,23 @@ era5land_stage_requests <- function(requests, registry, paths, config, stage_fun
     row <- if (length(idx)) registry[idx[[1L]], , drop = FALSE] else era5land_registry_row_for_request(request, config)
     local <- era5land_local_archive(request, paths)
     if (!is.null(local)) { reused <- reused + 1L; next }
-    if (era5land_has_value(row$cds_job_url)) { reused <- reused + 1L; next }
+    replacement_count <- suppressWarnings(as.integer(row$replacement_count[[1L]] %||% "0"))
+    is_replacement <- identical(as.character(row$request_status[[1L]]), "artifact_unavailable") &&
+      (is.na(replacement_count) || replacement_count < 1L)
+    if (!is_replacement && era5land_has_value(row$cds_job_url)) { reused <- reused + 1L; next }
     now <- format(Sys.time(), tz = "UTC", usetz = TRUE)
     staged <- tryCatch(era5land_stage_cds_request(request, stage_fun), error = function(e) e)
     if (inherits(staged, "error")) {
-      row$request_status <- "failed"; row$error_class <- paste(class(staged), collapse = ";"); row$error_message <- conditionMessage(staged)
+      row$request_status <- if (is_replacement) "artifact_unavailable" else "failed"
+      row$error_class <- if (is_replacement) "replacement_submission_failed" else paste(class(staged), collapse = ";")
+      row$error_message <- conditionMessage(staged)
       failures[[request$request_hash]] <- row$error_message
     } else {
+      if (is_replacement) {
+        row$superseded_cds_job_id <- row$cds_job_id
+        row$superseded_cds_job_url <- row$cds_job_url
+        row$replacement_count <- as.character(replacement_count + 1L)
+      }
       row$cds_job_id <- staged$cds_job_id; row$cds_job_url <- staged$cds_job_url; row$request_status <- "submitted"
       row$submitted_at <- now; row$last_checked_at <- now; row$error_class <- NA_character_; row$error_message <- NA_character_; submitted <- submitted + 1L
     }
@@ -276,9 +294,12 @@ era5land_query_cds_job_status <- function(url, status_fun = NULL) {
   list(state = era5land_normalize_remote_status(state), message = as.character(body$message %||% body$error_message %||% state %||% ""), raw = body)
 }
 
-era5land_retrieval_class <- function(error_message = "") {
+era5land_retrieval_class <- function(error_message = "", remote_state = NULL) {
   message <- trimws(as.character(error_message %||% ""))
-  if (identical(message, "Your requested file is unavailable - check url") || grepl("Your requested file is unavailable[[:space:]]*-[[:space:]]*check url", message, ignore.case = TRUE)) return("processing")
+  unavailable <- identical(message, "Your requested file is unavailable - check url") ||
+    grepl("Your requested file is unavailable[[:space:]]*-[[:space:]]*check url", message, ignore.case = TRUE)
+  if (unavailable && identical(remote_state, "successful")) return("artifact_unavailable")
+  if (unavailable) return("processing")
   if (grepl("expired|deleted from queue|previously deleted|job[^.]*not found|job[^.]*does not exist|request[^.]*gone", message, ignore.case = TRUE)) return("expired")
   if (grepl("(job|request)[^.]*failed|(job|request)[^.]*rejected|permanent[^.]*error|terminal[^.]*fail|server[- ]side[^.]*fail", message, ignore.case = TRUE)) return("failed")
   if (grepl("queued|processing|submitted|in progress|not ready|still running|pending|available later|timed out|timeout|connection reset|temporarily|temporary|unavailable", message, ignore.case = TRUE)) return("processing")
@@ -287,7 +308,7 @@ era5land_retrieval_class <- function(error_message = "") {
 
 era5land_retrieve_requests <- function(requests, registry, paths, config, transfer_fun = NULL, status_fun = NULL) {
   registry <- era5land_migrate_legacy_unavailable_rows(registry, requests, paths, persist = FALSE)
-  retrieved <- 0L; processing <- 0L; expired <- 0L; failed <- 0L
+  retrieved <- 0L; processing <- 0L; expired <- 0L; failed <- 0L; artifact_unavailable <- 0L
   for (request in requests) {
     idx <- era5land_registry_row_index(registry, request)
     if (!length(idx)) next
@@ -318,8 +339,10 @@ era5land_retrieve_requests <- function(requests, registry, paths, config, transf
     transfer <- transfer_fun %||% era5land_perform_cds_transfer
     answer <- tryCatch(if (length(formals(transfer)) >= 2L) transfer(row$cds_job_url, tmp) else transfer(row$cds_job_url), error = function(e) e)
     if (inherits(answer, "error")) {
-      classification <- era5land_retrieval_class(conditionMessage(answer)); row$error_class <- paste(class(answer), collapse = ";"); row$error_message <- conditionMessage(answer)
-      row$request_status <- classification; if (classification == "processing") processing <- processing + 1L else if (classification == "expired") expired <- expired + 1L else failed <- failed + 1L
+      remote_state <- if (!inherits(status_probe, "cds_status_query_error")) status_probe$state else NULL
+      classification <- era5land_retrieval_class(conditionMessage(answer), remote_state = remote_state); row$error_class <- paste(class(answer), collapse = ";"); row$error_message <- conditionMessage(answer)
+      row$request_status <- classification
+      if (classification == "processing") processing <- processing + 1L else if (classification == "artifact_unavailable") artifact_unavailable <- artifact_unavailable + 1L else if (classification == "expired") expired <- expired + 1L else failed <- failed + 1L
       registry <- era5land_registry_upsert(registry, row); era5land_write_request_registry(registry, paths); next
     }
     candidate <- if (is.character(answer) && length(answer) == 1L && file.exists(answer)) answer else if (file.exists(tmp)) tmp else NULL
@@ -341,5 +364,5 @@ era5land_retrieve_requests <- function(requests, registry, paths, config, transf
     }
     registry <- era5land_registry_upsert(registry, row); era5land_write_request_registry(registry, paths)
   }
-  list(registry = registry, retrieved = retrieved, processing = processing, expired = expired, failed = failed)
+  list(registry = registry, retrieved = retrieved, processing = processing, artifact_unavailable = artifact_unavailable, expired = expired, failed = failed)
 }
