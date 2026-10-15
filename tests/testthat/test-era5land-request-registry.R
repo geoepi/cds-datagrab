@@ -103,3 +103,41 @@ test_that("current production-shaped inventory recognizes thirteen cached months
   registry <- era5land_registry_reconcile(requests, era5land_empty_registry(), paths, cfg, persist = FALSE); inventory <- era5land_request_inventory(requests, registry, paths)
   expect_equal(inventory$source_requests_planned, 58L); expect_equal(inventory$raw_archives_valid, 13L); expect_equal(inventory$new_cds_requests_required, 45L); expect_equal(inventory$registered_pending_cds_jobs, 0L)
 })
+
+test_that("remote-success unavailable artifacts are durable and replaceable once", {
+  paths <- local_registry_paths("artifact-unavailable")
+  request <- registry_request_fixture()
+  cfg <- read_pipeline_config(package_file("config", "era5land_daily_mean_utc06_smoke.yml"))
+  calls <- 0L
+  stage_fun <- function(...) {
+    calls <<- calls + 1L
+    if (calls == 1L) list(job_id = "job-original", job_url = "https://cds/jobs/job-original")
+    else list(job_id = "job-replacement", job_url = "https://cds/jobs/job-replacement")
+  }
+  staged <- era5land_stage_requests(list(request), era5land_empty_registry(), paths, cfg, stage_fun = stage_fun)
+  unavailable <- era5land_retrieve_requests(
+    list(request), staged$registry, paths, cfg,
+    status_fun = function(url) "successful",
+    transfer_fun = function(...) stop("Your requested file is unavailable - check url")
+  )
+  expect_equal(unavailable$artifact_unavailable, 1L)
+  expect_identical(unavailable$registry$request_status[[1L]], "artifact_unavailable")
+  expect_identical(unavailable$registry$cds_job_id[[1L]], "job-original")
+  expect_equal(era5land_request_inventory(list(request), unavailable$registry, paths)$replacement_requests_required, 1L)
+
+  replacement <- era5land_stage_requests(
+    list(request), unavailable$registry, paths, cfg, stage_fun = stage_fun
+  )
+  expect_equal(calls, 2L)
+  expect_identical(replacement$registry$request_status[[1L]], "submitted")
+  expect_identical(replacement$registry$cds_job_id[[1L]], "job-replacement")
+  expect_identical(replacement$registry$superseded_cds_job_id[[1L]], "job-original")
+  expect_identical(replacement$registry$superseded_cds_job_url[[1L]], "https://cds/jobs/job-original")
+  expect_identical(replacement$registry$replacement_count[[1L]], "1")
+
+  restarted <- era5land_stage_requests(
+    list(request), replacement$registry, paths, cfg, stage_fun = stage_fun
+  )
+  expect_equal(calls, 2L)
+  expect_identical(restarted$registry$cds_job_id[[1L]], "job-replacement")
+})
