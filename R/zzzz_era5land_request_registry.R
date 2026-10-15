@@ -285,7 +285,7 @@ era5land_query_cds_job_status <- function(url, status_fun = NULL) {
     return(list(state = era5land_normalize_remote_status(state), message = as.character(answer$message %||% answer$error_message %||% state %||% ""), raw = answer))
   }
   if (!requireNamespace("ecmwfr", quietly = TRUE) || !requireNamespace("httr", quietly = TRUE)) stop("ecmwfr and httr are required for CDS job status inspection", call. = FALSE)
-  key <- ecmwfr::wf_get_key(user = "ecmwfr", service = "cds")
+  key <- ecmwfr::wf_get_key(user = "ecmwfr")
   response <- httr::GET(url, httr::add_headers("PRIVATE-TOKEN" = key), encode = "json")
   body <- tryCatch(httr::content(response), error = function(e) list())
   if (httr::status_code(response) %in% c(404L, 410L)) return(list(state = "expired", message = paste0("CDS job endpoint returned HTTP ", httr::status_code(response)), raw = body))
