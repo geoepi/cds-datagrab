@@ -178,3 +178,30 @@ This exact reference request also failed in R, so the extra production `area`, `
 ecmwfr resolves dataset/service metadata before submission using GET requests to `/api/catalogue/v1/collections/`. Its `wf_datasets()` converts any HTTP error to “Server not reachable...”; `wf_check_request()` then catches that error and `guess_service()` reports a generic dataset-not-found/credential-mismatch error. Those catalog GETs are not made through the traced `VERB` call, so their response status was not captured in this run. The observed request reached the task POST, establishing that service resolution succeeded for this attempt; the 401 was at task submission.
 
 **Diagnosis:** the known-working Python parameter set is not the cause of the R failure: the same reference fields were rejected by CDS at the Atlas ecmwfr authenticated task submission. Evidence does not distinguish PAT validity from CDS account or dataset permissions. No request or scientific correction was made. The other three standalone sources were not retested. The common verified endpoint remains unset, and readiness remains `UPDATE_PARTIALLY_READY`; no production data or Slurm jobs were touched.
+## Corrected Atlas credential and live common-endpoint verification — 2026-11-11
+
+This is the latest verification and supersedes the earlier standalone HTTP 401 results. The Atlas secrets.yaml PAT had been malformed; the operator corrected it. Using the existing credential loader, with ecmwfr_PAT absent before loading, the installed R package loaded the token from that file without displaying, logging, copying, or modifying it. The file was confirmed owner-only (0600). The CDS API call used ecmwfr_PAT authentication in ecmwfr's PRIVATE-TOKEN header; no separate CDS username or user ID was required or supplied. ecmwfr 2.0.3 authenticated successfully.
+
+All live retrievals used the established R production request builder, perform_cds_transfer()/ecmwfr, ZIP/NetCDF normalization, and existing validation in isolated probe scratch. Each standalone response was inspected for the requested temporal coordinate and configured variable:
+
+| Source workflow | Requested / observed date | Returned variable | Result |
+|---|---|---|---|
+| era5_mintemp | 2026-11-03 | 2m_temperature | VERIFIED |
+| era5_soilmoist | 2026-11-03 | volumetric_soil_water_layer_1 | VERIFIED |
+| era5_lai_low | 2026-11-03 | leaf_area_index_low_vegetation | VERIFIED |
+| agera5_relhum_min | 2026-11-03 | 2m_relative_humidity_derived (dataset version 2.0) | VERIFIED |
+| era5land_daily_mean_utc06 | Previously verified through 2026-11-05; includes 2026-11-03 | All eight configured variables | VERIFIED; preserved from the prior successful retrieval |
+
+For ERA5-Land the preserved variables are 2m_temperature, soil_temperature_level_1, soil_temperature_level_2, volumetric_soil_water_layer_1, volumetric_soil_water_layer_2, surface_pressure, leaf_area_index_high_vegetation, and leaf_area_index_low_vegetation. No ERA5-Land request was repeated in this run.
+
+**Latest verified endpoints:** era5_mintemp 2026-11-03; era5_soilmoist 2026-11-03; era5_lai_low 2026-11-03; agera5_relhum_min 2026-11-03; shared ERA5-Land 2026-11-05. **Verified common endpoint: 2026-11-03.**
+
+The existing portfolio wrapper was run in read-only plan mode through 2026-11-03. It reports 12 products, an incremental window of 2026-10-02 through 2026-11-03, 33 daily dates per product (396 total), and four complete ISO weeks per product (48 total: 2026-W41 through 2026-W44). No valid daily or weekly outputs were present in those incremental windows; the existing valid baseline through 2026-10-01 daily and 2026-09-27 weekly is reused. Expected workload if an update is later submitted is 5 source jobs, 5 aggregation jobs, and 1 final validation job (11 total).
+
+The planner still prints unverified explicit target because configured temporal.observed_end values remain 2026-07-26. Those scientific/workflow configuration files were left unchanged as requested. The live retrieval evidence above establishes the explicit 2026-11-03 target. Use this exact command for the production update when authorized:
+
+    bash hpc/submit_all_products.sh --through 2026-11-03 --mode update
+
+The focused tests passed: 73/73, with 0 failures and 0 warnings, using package source and installed commit 892197745ce290bc236fe5cf5baf1c7a316b5e73. The read-only planner contacted no CDS endpoint, submitted no Slurm jobs, and modified no production outputs. No production jobs or data were changed during this task.
+
+**Final decision: UPDATE_READY.**
