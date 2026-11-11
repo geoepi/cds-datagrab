@@ -1,30 +1,38 @@
 {
   "schema_version": 1,
-  "audit_timestamp_utc": "2026-11-11T15:31:58Z",
+  "audit_timestamp_utc": "2026-11-11T18:08:55Z",
   "audit_execution": {
-    "method": "public CDS STAC metadata review plus read-only Atlas production manifest and inventory reconciliation",
-    "discovery_command_executed": false,
-    "retrieval_probes_attempted": false,
+    "method": "public CDS metadata plus bounded R/ecmwfr retrieval validation and read-only portfolio planning",
+    "discovery_command_executed": true,
+    "retrieval_probes_attempted": true,
     "production_modified": false,
     "credentials_checked_for_presence_only": true,
-    "credentials_present": false,
+    "credentials_present": true,
     "python_cdsapi_client_present": false,
-    "credential_values_read": false,
     "repository_sha_inspected": "b5315a71793d700313a1c257125892079e03d854",
-    "feature_branch_base_sha": "a6345a25dd43706e3149c86db7ecfbdf61eb8a93"
+    "feature_branch_base_sha": "a6345a25dd43706e3149c86db7ecfbdf61eb8a93",
+    "credential_source_in_r_process": "environment",
+    "credential_value_displayed": false,
+    "credential_value_logged": false,
+    "credential_value_copied_or_committed": false,
+    "python_cdsapi_required": false,
+    "implementation_commit": "825452da33d66aa4dcc3bac20cc8b01a8686c7b3",
+    "atlas_checkout_used_for_configuration": "b5315a71793d700313a1c257125892079e03d854",
+    "credential_value_used_for_authentication": true,
+    "credential_value_contents_inspected": false
   },
   "catalogue_collections": [
     {
       "dataset_id": "derived-era5-single-levels-daily-statistics",
       "title": "ERA5 post-processed daily statistics on single levels",
       "published": "2024-10-14",
-      "updated": "2026-11-09",
-      "latest_advertised": "2026-11-03",
+      "updated": "2026-11-11",
+      "latest_advertised": "2026-11-05",
       "update_frequency": "daily",
       "sanity_check": "available",
       "doi": "10.24381/cds.4991cf48",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-single-levels-daily-statistics/constraints",
-      "constraints_retrieved": false,
+      "constraints_retrieved": true,
       "url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-single-levels-daily-statistics"
     },
     {
@@ -37,7 +45,7 @@
       "sanity_check": "available",
       "doi": "10.24381/cds.adbb2d47",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/reanalysis-era5-single-levels/constraints",
-      "constraints_retrieved": false,
+      "constraints_retrieved": true,
       "url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/reanalysis-era5-single-levels",
       "finality_note": "ERA5T preliminary data may later be replaced by finalized ERA5; the catalogue does not expose finality for each date."
     },
@@ -51,7 +59,7 @@
       "sanity_check": "available",
       "doi": "10.24381/cds.6c68c9bb",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/sis-agrometeorological-indicators/constraints",
-      "constraints_retrieved": false,
+      "constraints_retrieved": true,
       "url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/sis-agrometeorological-indicators"
     },
     {
@@ -64,7 +72,7 @@
       "sanity_check": "available",
       "doi": "10.24381/cds.e9c9c792",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-land-daily-statistics/constraints",
-      "constraints_retrieved": false,
+      "constraints_retrieved": true,
       "url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-land-daily-statistics"
     }
   ],
@@ -88,22 +96,41 @@
         "download_format": "unarchived",
         "request_chunk": "month"
       },
-      "latest_advertised": "2026-11-03",
+      "latest_advertised": "2026-11-05",
       "latest_request_constraints_date": null,
       "latest_accepted_request": null,
       "latest_verified": null,
-      "verification_status": "METADATA_ONLY",
-      "verification_reason": "Public collection metadata reviewed. Date constraints and complete retrieval were not tested.",
-      "compatibility_status": "UNRESOLVED",
+      "verification_status": "ERROR",
+      "verification_reason": "CDS retrieval failed",
+      "compatibility_status": "COMPATIBLE",
       "finality": "NOT_EXPOSED",
       "catalogue_published": "2024-10-14",
-      "catalogue_updated": "2026-11-09",
+      "catalogue_updated": "2026-11-11",
       "catalogue_update_frequency": "daily",
       "catalogue_sanity_check": "available",
       "doi": "10.24381/cds.4991cf48",
       "catalogue_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-single-levels-daily-statistics",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-single-levels-daily-statistics/constraints",
-      "constraints_status": "NOT_RETRIEVED"
+      "constraints_status": "SELECTIONS_PARTIALLY_ENUMERATED",
+      "request_constraints": {
+        "status": "SELECTIONS_PARTIALLY_ENUMERATED",
+        "fields": {
+          "product_type": "NOT_ENUMERATED",
+          "variable": "NOT_ENUMERATED",
+          "daily_statistic": "NOT_ENUMERATED",
+          "time_zone": "NOT_ENUMERATED",
+          "frequency": "NOT_ENUMERATED",
+          "data_format": "NOT_ENUMERATED",
+          "download_format": "NOT_ENUMERATED"
+        },
+        "date_fields": {
+          "year": "NOT_ENUMERATED",
+          "month": "NOT_ENUMERATED",
+          "day": "NOT_ENUMERATED"
+        },
+        "candidate_date_admissible": null,
+        "reason": "Static selections appear compatible, but request constraints do not enumerate every date field"
+      }
     },
     {
       "source_workflow": "era5_soilmoist",
@@ -124,22 +151,41 @@
         "download_format": "unarchived",
         "request_chunk": "month"
       },
-      "latest_advertised": "2026-11-03",
+      "latest_advertised": "2026-11-05",
       "latest_request_constraints_date": null,
       "latest_accepted_request": null,
       "latest_verified": null,
-      "verification_status": "METADATA_ONLY",
-      "verification_reason": "Public collection metadata reviewed. Date constraints and complete retrieval were not tested.",
-      "compatibility_status": "UNRESOLVED",
+      "verification_status": "ERROR",
+      "verification_reason": "CDS retrieval failed",
+      "compatibility_status": "COMPATIBLE",
       "finality": "NOT_EXPOSED",
       "catalogue_published": "2024-10-14",
-      "catalogue_updated": "2026-11-09",
+      "catalogue_updated": "2026-11-11",
       "catalogue_update_frequency": "daily",
       "catalogue_sanity_check": "available",
       "doi": "10.24381/cds.4991cf48",
       "catalogue_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-single-levels-daily-statistics",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-single-levels-daily-statistics/constraints",
-      "constraints_status": "NOT_RETRIEVED"
+      "constraints_status": "SELECTIONS_PARTIALLY_ENUMERATED",
+      "request_constraints": {
+        "status": "SELECTIONS_PARTIALLY_ENUMERATED",
+        "fields": {
+          "product_type": "NOT_ENUMERATED",
+          "variable": "NOT_ENUMERATED",
+          "daily_statistic": "NOT_ENUMERATED",
+          "time_zone": "NOT_ENUMERATED",
+          "frequency": "NOT_ENUMERATED",
+          "data_format": "NOT_ENUMERATED",
+          "download_format": "NOT_ENUMERATED"
+        },
+        "date_fields": {
+          "year": "NOT_ENUMERATED",
+          "month": "NOT_ENUMERATED",
+          "day": "NOT_ENUMERATED"
+        },
+        "candidate_date_admissible": null,
+        "reason": "Static selections appear compatible, but request constraints do not enumerate every date field"
+      }
     },
     {
       "source_workflow": "era5_lai_low",
@@ -165,9 +211,9 @@
       "latest_request_constraints_date": null,
       "latest_accepted_request": null,
       "latest_verified": null,
-      "verification_status": "METADATA_ONLY",
-      "verification_reason": "Public collection metadata reviewed. Date constraints and complete retrieval were not tested.",
-      "compatibility_status": "UNRESOLVED",
+      "verification_status": "ERROR",
+      "verification_reason": "CDS retrieval failed",
+      "compatibility_status": "COMPATIBLE",
       "finality": "NOT_EXPOSED",
       "catalogue_published": "2018-06-14",
       "catalogue_updated": "2026-11-11",
@@ -176,8 +222,25 @@
       "doi": "10.24381/cds.adbb2d47",
       "catalogue_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/reanalysis-era5-single-levels",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/reanalysis-era5-single-levels/constraints",
-      "constraints_status": "NOT_RETRIEVED",
-      "finality_note": "ERA5 may expose ERA5T preliminary data; no date-level finality evidence was retrieved."
+      "constraints_status": "SELECTIONS_PARTIALLY_ENUMERATED",
+      "finality_note": "ERA5 may expose ERA5T preliminary data; no date-level finality evidence was retrieved.",
+      "request_constraints": {
+        "status": "SELECTIONS_PARTIALLY_ENUMERATED",
+        "fields": {
+          "product_type": "NOT_ENUMERATED",
+          "variable": "NOT_ENUMERATED",
+          "time": "NOT_ENUMERATED",
+          "data_format": "NOT_ENUMERATED",
+          "download_format": "NOT_ENUMERATED"
+        },
+        "date_fields": {
+          "year": "NOT_ENUMERATED",
+          "month": "NOT_ENUMERATED",
+          "day": "NOT_ENUMERATED"
+        },
+        "candidate_date_admissible": null,
+        "reason": "Static selections appear compatible, but request constraints do not enumerate every date field"
+      }
     },
     {
       "source_workflow": "agera5_relhum_min",
@@ -200,9 +263,9 @@
       "latest_request_constraints_date": null,
       "latest_accepted_request": null,
       "latest_verified": null,
-      "verification_status": "METADATA_ONLY",
-      "verification_reason": "Public collection and version options reviewed. No CDS API request was accepted or retrieved.",
-      "compatibility_status": "CONFIGURED_V2_STATIC_OPTIONS",
+      "verification_status": "ERROR",
+      "verification_reason": "CDS retrieval failed",
+      "compatibility_status": "COMPATIBLE",
       "finality": "NOT_EXPOSED",
       "catalogue_published": "2020-01-30",
       "catalogue_updated": "2026-11-10",
@@ -211,9 +274,24 @@
       "doi": "10.24381/cds.6c68c9bb",
       "catalogue_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/sis-agrometeorological-indicators",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/sis-agrometeorological-indicators/constraints",
-      "constraints_status": "NOT_RETRIEVED",
+      "constraints_status": "SELECTIONS_PARTIALLY_ENUMERATED",
       "version_notice": "CDS announced the end of v1.1 updates in June 2026; v2 remains updated. The configured workflow already requests v2.0.",
-      "numerical_compatibility_with_v1_1": "NOT_ASSESSED"
+      "numerical_compatibility_with_v1_1": "NOT_ASSESSED",
+      "request_constraints": {
+        "status": "SELECTIONS_PARTIALLY_ENUMERATED",
+        "fields": {
+          "variable": "NOT_ENUMERATED",
+          "statistic": "NOT_ENUMERATED",
+          "version": "NOT_ENUMERATED"
+        },
+        "date_fields": {
+          "year": "NOT_ENUMERATED",
+          "month": "NOT_ENUMERATED",
+          "day": "NOT_ENUMERATED"
+        },
+        "candidate_date_admissible": null,
+        "reason": "Static selections appear compatible, but request constraints do not enumerate every date field"
+      }
     },
     {
       "source_workflow": "era5land_daily_mean_utc06",
@@ -250,12 +328,12 @@
       },
       "latest_advertised": "2026-11-05",
       "latest_request_constraints_date": null,
-      "latest_accepted_request": null,
-      "latest_verified": null,
-      "verification_status": "METADATA_ONLY",
-      "verification_reason": "Public collection metadata reviewed. Date constraints and a complete eight-variable response were not tested.",
-      "compatibility_status": "UNRESOLVED",
-      "finality": "NOT_EXPOSED",
+      "latest_accepted_request": "2026-11-05",
+      "latest_verified": "2026-11-05",
+      "verification_status": "VERIFIED",
+      "verification_reason": "Retrieved artifact contains the requested date and every configured variable",
+      "compatibility_status": "COMPATIBLE",
+      "finality": "UNSPECIFIED",
       "catalogue_published": "2024-10-14",
       "catalogue_updated": "2026-11-11",
       "catalogue_update_frequency": "daily",
@@ -263,7 +341,26 @@
       "doi": "10.24381/cds.e9c9c792",
       "catalogue_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-land-daily-statistics",
       "constraints_url": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/derived-era5-land-daily-statistics/constraints",
-      "constraints_status": "NOT_RETRIEVED"
+      "constraints_status": "SELECTIONS_PARTIALLY_ENUMERATED",
+      "request_constraints": {
+        "status": "SELECTIONS_PARTIALLY_ENUMERATED",
+        "fields": {
+          "product_type": "NOT_ENUMERATED",
+          "variable": "NOT_ENUMERATED",
+          "daily_statistic": "NOT_ENUMERATED",
+          "time_zone": "NOT_ENUMERATED",
+          "frequency": "NOT_ENUMERATED",
+          "data_format": "NOT_ENUMERATED",
+          "download_format": "NOT_ENUMERATED"
+        },
+        "date_fields": {
+          "year": "NOT_ENUMERATED",
+          "month": "NOT_ENUMERATED",
+          "day": "NOT_ENUMERATED"
+        },
+        "candidate_date_admissible": null,
+        "reason": "Static selections appear compatible, but request constraints do not enumerate every date field"
+      }
     }
   ],
   "portfolio": {
@@ -279,7 +376,7 @@
     "metadata_conditional_common_endpoint_status": "METADATA_ONLY",
     "common_endpoint_status": "UNVERIFIED",
     "hard_temporal_horizon": "2026-12-31",
-    "blocker": "Request constraints and complete retrieval evidence are missing for all five workflows."
+    "blocker": "Four source workflows returned retrieval errors before request acceptance; only ERA5-Land produced a verified artifact."
   },
   "production_inventory": {
     "root": "/project/disease_ecology/cds-datagrab-output",
@@ -313,26 +410,36 @@
       "source_workflow": "era5_mintemp",
       "production_latest": "2026-10-01",
       "verified_missing_days": null,
-      "catalog_conditional_missing_days": 33,
-      "catalog_conditional_through": "2026-11-03",
+      "catalog_conditional_missing_days": 35,
+      "catalog_conditional_through": "2026-11-05",
       "verified_complete_week_endpoint": null,
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold update pending complete retrieval evidence"
+      "availability_confidence": "ERROR",
+      "recommended_action": "retry after diagnosing the CDS retrieval error before request acceptance",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": null,
+      "verified_through": null,
+      "verified_additional_complete_weeks": null,
+      "target_date_retrieval_status": "ERROR"
     },
     {
       "product_id": "era5_soilmoist",
       "source_workflow": "era5_soilmoist",
       "production_latest": "2026-10-01",
       "verified_missing_days": null,
-      "catalog_conditional_missing_days": 33,
-      "catalog_conditional_through": "2026-11-03",
+      "catalog_conditional_missing_days": 35,
+      "catalog_conditional_through": "2026-11-05",
       "verified_complete_week_endpoint": null,
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold update pending complete retrieval evidence"
+      "availability_confidence": "ERROR",
+      "recommended_action": "retry after diagnosing the CDS retrieval error before request acceptance",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": null,
+      "verified_through": null,
+      "verified_additional_complete_weeks": null,
+      "target_date_retrieval_status": "ERROR"
     },
     {
       "product_id": "era5_lai_low",
@@ -344,8 +451,13 @@
       "verified_complete_week_endpoint": null,
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold; labels are monthly climatology dates"
+      "availability_confidence": "ERROR",
+      "recommended_action": "retry after diagnosing the CDS retrieval error before request acceptance",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": null,
+      "verified_through": null,
+      "verified_additional_complete_weeks": null,
+      "target_date_retrieval_status": "ERROR"
     },
     {
       "product_id": "agera5_relhum_min",
@@ -357,112 +469,157 @@
       "verified_complete_week_endpoint": null,
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold update pending complete retrieval evidence"
+      "availability_confidence": "ERROR",
+      "recommended_action": "retry after diagnosing the CDS retrieval error before request acceptance",
+      "cds_latest_advertised": "2026-11-03",
+      "cds_latest_verified": null,
+      "verified_through": null,
+      "verified_additional_complete_weeks": null,
+      "target_date_retrieval_status": "ERROR"
     },
     {
       "product_id": "era5land_tmean",
       "source_workflow": "era5land_daily_mean_utc06",
       "production_latest": "2026-10-01",
-      "verified_missing_days": null,
+      "verified_missing_days": 35,
       "catalog_conditional_missing_days": 35,
       "catalog_conditional_through": "2026-11-05",
-      "verified_complete_week_endpoint": null,
+      "verified_complete_week_endpoint": "2026-11-01",
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold pending all eight variables"
+      "availability_confidence": "VERIFIED",
+      "recommended_action": "hold portfolio update until all five source workflows share a verified endpoint",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": "2026-11-05",
+      "verified_through": "2026-11-05",
+      "verified_additional_complete_weeks": 4,
+      "target_date_retrieval_status": "VERIFIED"
     },
     {
       "product_id": "era5land_soiltemp_l1_mean",
       "source_workflow": "era5land_daily_mean_utc06",
       "production_latest": "2026-10-01",
-      "verified_missing_days": null,
+      "verified_missing_days": 35,
       "catalog_conditional_missing_days": 35,
       "catalog_conditional_through": "2026-11-05",
-      "verified_complete_week_endpoint": null,
+      "verified_complete_week_endpoint": "2026-11-01",
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold pending all eight variables"
+      "availability_confidence": "VERIFIED",
+      "recommended_action": "hold portfolio update until all five source workflows share a verified endpoint",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": "2026-11-05",
+      "verified_through": "2026-11-05",
+      "verified_additional_complete_weeks": 4,
+      "target_date_retrieval_status": "VERIFIED"
     },
     {
       "product_id": "era5land_soiltemp_l2_mean",
       "source_workflow": "era5land_daily_mean_utc06",
       "production_latest": "2026-10-01",
-      "verified_missing_days": null,
+      "verified_missing_days": 35,
       "catalog_conditional_missing_days": 35,
       "catalog_conditional_through": "2026-11-05",
-      "verified_complete_week_endpoint": null,
+      "verified_complete_week_endpoint": "2026-11-01",
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold pending all eight variables"
+      "availability_confidence": "VERIFIED",
+      "recommended_action": "hold portfolio update until all five source workflows share a verified endpoint",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": "2026-11-05",
+      "verified_through": "2026-11-05",
+      "verified_additional_complete_weeks": 4,
+      "target_date_retrieval_status": "VERIFIED"
     },
     {
       "product_id": "era5land_soilwater_l1_mean",
       "source_workflow": "era5land_daily_mean_utc06",
       "production_latest": "2026-10-01",
-      "verified_missing_days": null,
+      "verified_missing_days": 35,
       "catalog_conditional_missing_days": 35,
       "catalog_conditional_through": "2026-11-05",
-      "verified_complete_week_endpoint": null,
+      "verified_complete_week_endpoint": "2026-11-01",
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold pending all eight variables"
+      "availability_confidence": "VERIFIED",
+      "recommended_action": "hold portfolio update until all five source workflows share a verified endpoint",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": "2026-11-05",
+      "verified_through": "2026-11-05",
+      "verified_additional_complete_weeks": 4,
+      "target_date_retrieval_status": "VERIFIED"
     },
     {
       "product_id": "era5land_soilwater_l2_mean",
       "source_workflow": "era5land_daily_mean_utc06",
       "production_latest": "2026-10-01",
-      "verified_missing_days": null,
+      "verified_missing_days": 35,
       "catalog_conditional_missing_days": 35,
       "catalog_conditional_through": "2026-11-05",
-      "verified_complete_week_endpoint": null,
+      "verified_complete_week_endpoint": "2026-11-01",
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold pending all eight variables"
+      "availability_confidence": "VERIFIED",
+      "recommended_action": "hold portfolio update until all five source workflows share a verified endpoint",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": "2026-11-05",
+      "verified_through": "2026-11-05",
+      "verified_additional_complete_weeks": 4,
+      "target_date_retrieval_status": "VERIFIED"
     },
     {
       "product_id": "era5land_surface_pressure_mean",
       "source_workflow": "era5land_daily_mean_utc06",
       "production_latest": "2026-10-01",
-      "verified_missing_days": null,
+      "verified_missing_days": 35,
       "catalog_conditional_missing_days": 35,
       "catalog_conditional_through": "2026-11-05",
-      "verified_complete_week_endpoint": null,
+      "verified_complete_week_endpoint": "2026-11-01",
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold pending all eight variables"
+      "availability_confidence": "VERIFIED",
+      "recommended_action": "hold portfolio update until all five source workflows share a verified endpoint",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": "2026-11-05",
+      "verified_through": "2026-11-05",
+      "verified_additional_complete_weeks": 4,
+      "target_date_retrieval_status": "VERIFIED"
     },
     {
       "product_id": "era5land_lai_high_mean",
       "source_workflow": "era5land_daily_mean_utc06",
       "production_latest": "2026-10-01",
-      "verified_missing_days": null,
+      "verified_missing_days": 35,
       "catalog_conditional_missing_days": 35,
       "catalog_conditional_through": "2026-11-05",
-      "verified_complete_week_endpoint": null,
+      "verified_complete_week_endpoint": "2026-11-01",
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold; monthly climatology dates"
+      "availability_confidence": "VERIFIED",
+      "recommended_action": "hold portfolio update until all five source workflows share a verified endpoint",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": "2026-11-05",
+      "verified_through": "2026-11-05",
+      "verified_additional_complete_weeks": 4,
+      "target_date_retrieval_status": "VERIFIED"
     },
     {
       "product_id": "era5land_lai_low_mean",
       "source_workflow": "era5land_daily_mean_utc06",
       "production_latest": "2026-10-01",
-      "verified_missing_days": null,
+      "verified_missing_days": 35,
       "catalog_conditional_missing_days": 35,
       "catalog_conditional_through": "2026-11-05",
-      "verified_complete_week_endpoint": null,
+      "verified_complete_week_endpoint": "2026-11-01",
       "catalog_conditional_complete_week_endpoint": "2026-11-01",
       "conditional_additional_complete_weeks": 4,
-      "availability_confidence": "METADATA_ONLY",
-      "recommended_action": "hold; monthly climatology dates"
+      "availability_confidence": "VERIFIED",
+      "recommended_action": "hold portfolio update until all five source workflows share a verified endpoint",
+      "cds_latest_advertised": "2026-11-05",
+      "cds_latest_verified": "2026-11-05",
+      "verified_through": "2026-11-05",
+      "verified_additional_complete_weeks": 4,
+      "target_date_retrieval_status": "VERIFIED"
     }
   ],
   "source_archives": [
@@ -512,15 +669,18 @@
   "conditional_workload": {
     "portfolio_common_advertised_endpoint": "2026-11-03",
     "portfolio_conditional_missing_daily_outputs": 396,
-    "independent_product_conditional_daily_outputs": 414,
+    "independent_product_conditional_daily_outputs": 418,
     "conditional_additional_complete_iso_weeks": 4,
     "conditional_weekly_outputs": 48,
     "monthly_source_request_chunks_estimate": 10,
     "portfolio_plan_execution": {
       "command": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode plan",
+      "planner": "hpc/plan_production_portfolio.R (read-only; existing production output root)",
       "requested_window": "2026-10-02 through 2026-11-03",
       "daily_per_product": "0/33",
+      "incremental_daily_outputs_total": 396,
       "complete_iso_weeks_per_product": "0/4",
+      "incremental_weekly_outputs_total": 48,
       "complete_iso_week_ids": [
         "2026-W41",
         "2026-W42",
@@ -530,83 +690,178 @@
       "cds_contacted": false,
       "slurm_jobs_submitted": false,
       "production_outputs_modified": false,
-      "target_availability": "unverified explicit target"
+      "target_availability": "unverified explicit target; one source family verified, four retrieval errors"
     },
     "request_chunking": "Two calendar-month chunks for each of five workflows; ERA5-Land sends all eight variables per chunk.",
-    "eligible_existing_archives": null
+    "eligible_existing_archives": null,
+    "expected_slurm_workload_if_updated": {
+      "source_jobs": 5,
+      "aggregation_jobs": 5,
+      "portfolio_validation_jobs": 1,
+      "total": 11
+    }
   },
   "decision": {
-    "status": "UPDATE_BLOCKED",
-    "reason": "No source retrieval was verified. The last Atlas presence check found ecmwfr_PAT unset but did not assess stored wf_set_key authentication; current authentication recheck and planner rerun were blocked because the policy-required Atlas wrapper was missing.",
+    "status": "UPDATE_PARTIALLY_READY",
+    "reason": "Authentication works and ERA5-Land is verified through 2026-11-05, including the 2026-11-03 target and all eight configured variables. Four source workflows errored before request acceptance, so no common verified endpoint exists and production update remains blocked.",
     "recommended_update_command_if_endpoint_is_later_verified": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode plan",
-    "command_status": "NOT_RUN_AUTHENTICATION_AND_ATLAS_WRAPPER_BLOCKERS",
+    "command_status": "READ_ONLY_PLAN_COMPLETED; PRODUCTION_UPDATE_NOT_RUN_INCOMPLETE_SOURCE_VERIFICATION",
     "production_update_or_jobs_submitted": false,
     "chime_changes_or_downstream_jobs": false,
     "recommended_production_update_command_if_verification_succeeds": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode update"
   },
   "retrieval_verification_followup": {
-    "audit_timestamp_utc": "2026-11-11T16:54:30Z",
+    "audit_timestamp_utc": "2026-11-11T18:08:55Z",
     "repository_branch": "codex/cds-availability-audit",
-    "repository_sha": "4eeed60a95ffa473613979df84f6d19654079b14",
-    "retrieval_interface": "R ecmwfr::wf_request(transfer=TRUE)",
-    "required_r_credential": "ecmwfr_PAT",
-    "last_recorded_credential_check_utc": "2026-11-11T15:31:58Z",
-    "last_recorded_ecmwfr_PAT_present": false,
-    "last_recorded_cdsapirc_present": false,
-    "credential_values_read": false,
+    "implementation_commit": "825452da33d66aa4dcc3bac20cc8b01a8686c7b3",
+    "atlas_configuration_checkout_commit": "b5315a71793d700313a1c257125892079e03d854",
+    "retrieval_interface": "existing R ecmwfr::wf_request via download_cds_requests and cdsdatagrab live probe",
+    "authentication_status": "AVAILABLE",
+    "authentication_source": "ecmwfr_PAT present in R process environment; secret value not displayed",
+    "secure_secrets_yaml_fallback": "implemented and focused-tested with dummy credentials; not needed in this live R process",
+    "credential_value_displayed_or_logged": false,
+    "credential_file_modified": false,
+    "ecmwfr_client_available": true,
     "python_cdsapi_required": false,
-    "current_credential_recheck_completed": false,
-    "atlas_wrapper_path": "/home/john/bin/atlas-ssh",
-    "atlas_wrapper_status": "MISSING_IN_CURRENT_WSL_ENVIRONMENT",
-    "atlas_controlmaster_status": "RUNNING",
-    "live_verification_status": "STOPPED_AUTH_NOT_CONFIRMED_ATLAS_WRAPPER_UNAVAILABLE",
-    "live_requests_sent": false,
-    "retrieval_artifacts_inspected": false,
+    "live_verification_status": "PARTIAL",
+    "target_date": "2026-11-03",
+    "latest_verified_common_endpoint": null,
+    "latest_verified_endpoint_by_source": {
+      "era5_mintemp": null,
+      "era5_soilmoist": null,
+      "era5_lai_low": null,
+      "agera5_relhum_min": null,
+      "era5land_daily_mean_utc06": "2026-11-05"
+    },
     "source_outcomes": [
       {
         "source_workflow": "era5_mintemp",
-        "latest_advertised": "2026-11-03",
+        "latest_advertised": "2026-11-05",
+        "latest_candidate_date": "2026-11-05",
+        "latest_candidate_status": "ERROR",
         "latest_verified": null,
-        "verification_status": "METADATA_ONLY",
-        "retrieval_outcome": "NOT_ATTEMPTED_AUTH_BLOCKED"
+        "target_date": "2026-11-03",
+        "target_date_status": "ERROR",
+        "request_accepted": false,
+        "attempt_count": 1,
+        "http_status": "NA",
+        "reason": "CDS retrieval failed",
+        "observed_dates": [],
+        "requested_variables": [
+          "2m_temperature"
+        ],
+        "returned_variables": [],
+        "dataset_version": null,
+        "artifact_sha256": null
       },
       {
         "source_workflow": "era5_soilmoist",
-        "latest_advertised": "2026-11-03",
+        "latest_advertised": "2026-11-05",
+        "latest_candidate_date": "2026-11-05",
+        "latest_candidate_status": "ERROR",
         "latest_verified": null,
-        "verification_status": "METADATA_ONLY",
-        "retrieval_outcome": "NOT_ATTEMPTED_AUTH_BLOCKED"
+        "target_date": "2026-11-03",
+        "target_date_status": "ERROR",
+        "request_accepted": false,
+        "attempt_count": 1,
+        "http_status": "NA",
+        "reason": "CDS retrieval failed",
+        "observed_dates": [],
+        "requested_variables": [
+          "volumetric_soil_water_layer_1"
+        ],
+        "returned_variables": [],
+        "dataset_version": null,
+        "artifact_sha256": null
       },
       {
         "source_workflow": "era5_lai_low",
         "latest_advertised": "2026-11-05",
+        "latest_candidate_date": "2026-11-05",
+        "latest_candidate_status": "ERROR",
         "latest_verified": null,
-        "verification_status": "METADATA_ONLY",
-        "retrieval_outcome": "NOT_ATTEMPTED_AUTH_BLOCKED"
+        "target_date": "2026-11-03",
+        "target_date_status": "ERROR",
+        "request_accepted": false,
+        "attempt_count": 1,
+        "http_status": "NA",
+        "reason": "CDS retrieval failed",
+        "observed_dates": [],
+        "requested_variables": [
+          "leaf_area_index_low_vegetation"
+        ],
+        "returned_variables": [],
+        "dataset_version": null,
+        "artifact_sha256": null
       },
       {
         "source_workflow": "agera5_relhum_min",
         "latest_advertised": "2026-11-03",
+        "latest_candidate_date": "2026-11-03",
+        "latest_candidate_status": "ERROR",
         "latest_verified": null,
-        "verification_status": "METADATA_ONLY",
-        "retrieval_outcome": "NOT_ATTEMPTED_AUTH_BLOCKED"
+        "target_date": "2026-11-03",
+        "target_date_status": "ERROR",
+        "request_accepted": false,
+        "attempt_count": 1,
+        "http_status": "NA",
+        "reason": "CDS retrieval failed",
+        "observed_dates": [],
+        "requested_variables": [
+          "2m_relative_humidity_derived"
+        ],
+        "returned_variables": [],
+        "dataset_version": null,
+        "artifact_sha256": null
       },
       {
         "source_workflow": "era5land_daily_mean_utc06",
         "latest_advertised": "2026-11-05",
-        "latest_verified": null,
-        "verification_status": "METADATA_ONLY",
-        "retrieval_outcome": "NOT_ATTEMPTED_AUTH_BLOCKED",
-        "requested_variables_complete": false
+        "latest_candidate_date": "2026-11-05",
+        "latest_candidate_status": "VERIFIED",
+        "latest_verified": "2026-11-05",
+        "target_date": "2026-11-03",
+        "target_date_status": "VERIFIED",
+        "request_accepted": true,
+        "attempt_count": 1,
+        "http_status": null,
+        "reason": "Retrieved artifact contains the requested date and every configured variable",
+        "observed_dates": [
+          "2026-11-03"
+        ],
+        "requested_variables": [
+          "2m_temperature",
+          "soil_temperature_level_1",
+          "soil_temperature_level_2",
+          "volumetric_soil_water_layer_1",
+          "volumetric_soil_water_layer_2",
+          "surface_pressure",
+          "leaf_area_index_high_vegetation",
+          "leaf_area_index_low_vegetation"
+        ],
+        "returned_variables": [
+          "2m_temperature",
+          "soil_temperature_level_1",
+          "soil_temperature_level_2",
+          "volumetric_soil_water_layer_1",
+          "volumetric_soil_water_layer_2",
+          "surface_pressure",
+          "leaf_area_index_high_vegetation",
+          "leaf_area_index_low_vegetation"
+        ],
+        "dataset_version": null,
+        "artifact_sha256": "9fd1a0e24b6b8faf11b03a0f5ef251892882003265b89c4ab32b3735acc09f63"
       }
     ],
-    "verified_common_endpoint": null,
+    "planner_rerun_status": "READ_ONLY_PLAN_COMPLETED; target remains unverified for four workflows",
     "prior_read_only_planner_result": {
       "command": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode plan",
+      "planner": "hpc/plan_production_portfolio.R",
       "endpoint_status": "UNVERIFIED_EXPLICIT_TARGET",
       "requested_window": "2026-10-02 through 2026-11-03",
       "incremental_daily_dates_per_product": 33,
       "incremental_daily_outputs_total": 396,
+      "daily_outputs_present_total": 0,
       "complete_iso_weeks_per_product": 4,
       "complete_iso_week_ids": [
         "2026-W41",
@@ -615,24 +870,21 @@
         "2026-W44"
       ],
       "incremental_weekly_outputs_total": 48,
+      "weekly_outputs_present_total": 0,
       "daily_outputs_present": "0/33 per product",
       "weekly_outputs_present": "0/4 per product",
-      "existing_valid_daily_baseline": "1,735 per product through 2026-10-01",
-      "existing_valid_weekly_baseline": "247 per product through 2026-W39",
+      "existing_valid_daily_baseline": "1735 per product through 2026-10-01",
+      "existing_valid_weekly_baseline": "247 per product through 2026-09-27",
       "expected_slurm_jobs_if_updated": {
         "source": 5,
         "aggregation": 5,
         "portfolio_validation": 1,
         "total": 11
       },
-      "source_request_chunks_estimate": 10,
       "production_jobs_submitted": false
     },
-    "planner_rerun_status": "NOT_RUN_NO_VERIFIED_ENDPOINT_AND_ATLAS_WRAPPER_MISSING",
     "production_data_modified": false,
-    "recommendation": "Confirm ecmwfr authentication securely (ecmwfr_PAT or an authorized stored wf_set_key credential), restore the policy wrapper, verify all five sources, then plan and review before update mode.",
-    "authentication_status": "NOT_CONFIRMED",
-    "stored_wf_set_key_credential_checked": false,
-    "authentication_observation": "ecmwfr_PAT was unset at the last recorded presence check; stored ecmwfr wf_set_key state was not assessed."
+    "recommendation": "Diagnose the four pre-acceptance retrieval errors, then repeat bounded verification for all five sources at 2026-11-03.",
+    "final_decision": "UPDATE_PARTIALLY_READY"
   }
 }

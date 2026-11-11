@@ -1,10 +1,10 @@
 # CDS latest-available-date and update readiness
 
-**Availability audit timestamp:** 2026-11-11T15:31:58Z
-**Retrieval readiness follow-up:** 2026-11-11T16:54:30Z
-**Current decision:** UPDATE_BLOCKED (supersedes the initial partial-readiness decision)
+**Availability audit timestamp:** 2026-11-11T18:08:55Z
+**Retrieval verification:** 2026-11-11T18:08:55Z
+**Current decision:** UPDATE_PARTIALLY_READY (ERA5-Land verified; four workflows remain unresolved)
 **Atlas repository inspected:** /project/disease_ecology/cds-datagrab, main, b5315a71793d700313a1c257125892079e03d854
-**Local feature branch base:** a6345a25dd43706e3149c86db7ecfbdf61eb8a93
+**Local feature branch:** codex/cds-availability-audit at 825452da33d66aa4dcc3bac20cc8b01a8686c7b3
 **Production inventory timestamp:** latest successful portfolio manifest modified 2026-10-15T17:39:07Z; manifest 20261015T163459Z_portfolio.
 
 ## Decision and endpoints
@@ -99,40 +99,34 @@ The current CHIME adapter reports local manifest state and configured endpoint. 
 
 ## Retrieval verification follow-up — 2026-11-11
 
-This follow-up supersedes the earlier UPDATE_PARTIALLY_READY conclusion. The current decision is UPDATE_BLOCKED because no source has a verified retrieval date and the required Atlas authentication could not be rechecked in this turn.
+This follow-up supersedes the earlier authentication-blocked report. The R process had ecmwfr_PAT available from its environment, and the installed ecmwfr client authenticated successfully for the shared ERA5-Land retrieval. The credential value was not displayed, logged, copied, or committed. The secrets.yaml fallback is implemented and focused-tested with dummy credentials; the live R process did not need to read that file. Python cdsapi is not required.
 
-### Authentication and retrieval path
+The existing R request path and repository validators were used. CDS response archives were normalized through the existing ZIP handling; ERA5-Land members were mapped and checked with the existing eight-product archive validator. All probe outputs were temporary and isolated from production data.
 
-The production retriever is the existing R interface: perform_cds_transfer() calls ecmwfr::wf_request(..., transfer = TRUE), and the bounded discovery probe uses the same ecmwfr request path with temporary scratch outputs. The repository setup script expects ecmwfr_PAT in the secure Atlas environment (or an interactive ecmwfr::wf_set_key() setup on a secure login node). Python cdsapi is not required, and it was not installed.
+| Source workflow | Latest advertised | Latest candidate retrieval | Exact 2026-11-03 retrieval | Returned evidence |
+|---|---:|---|---|---|
+| era5_mintemp | 2026-11-05 | 2026-11-05 ERROR | ERROR at 2026-11-03; no request accepted | no coordinates or variables returned |
+| era5_soilmoist | 2026-11-05 | 2026-11-05 ERROR | ERROR at 2026-11-03; no request accepted | no coordinates or variables returned |
+| era5_lai_low | 2026-11-05 | 2026-11-05 ERROR | ERROR at 2026-11-03; no request accepted | no coordinates or variables returned |
+| agera5_relhum_min | 2026-11-03 | 2026-11-03 ERROR | ERROR at 2026-11-03; no request accepted | no coordinates or variables returned |
+| era5land_daily_mean_utc06 | 2026-11-05 | 2026-11-05 VERIFIED | VERIFIED 2026-11-03 | 8/8 variables; 2026-11-03 |
 
-The latest recorded Atlas presence check, at 2026-11-11T15:31:58Z, found ecmwfr_PAT unset and ~/.cdsapirc absent; no credential value was read. It did not test whether an ecmwfr key is already stored through wf_set_key(). A follow-up attempt verified that the WSL ControlMaster was running, but the policy-required wrapper /home/john/bin/atlas-ssh was missing in this WSL environment. Therefore current authentication could not be confirmed. The exact absent environment configuration from the last check is ecmwfr_PAT; the stored wf_set_key() credential state was not assessed. ~/.cdsapirc is not required by the established R path. Live verification stopped before any CDS request.
+ERA5-Land returned the exact 2026-11-03 temporal coordinate and all eight configured variables: 2m_temperature, soil_temperature_level_1, soil_temperature_level_2, volumetric_soil_water_layer_1, volumetric_soil_water_layer_2, surface_pressure, leaf_area_index_high_vegetation, leaf_area_index_low_vegetation. Its latest candidate, 2026-11-05, also passed the existing archive/date/variable checks. The other four workflows returned errors before a request was accepted; no artifact, temporal coordinate, or returned-variable set was available for inspection. The safe error summary did not retain an HTTP status for these failures, so they remain ERROR, not UNAVAILABLE. The current catalogue constraints omit year/month/day enums; the accepted ERA5-Land retrieval proves its requested dates directly, while date admissibility remains unknown for the four failed workflows.
 
-| Source workflow | Advertised date | Retrieval result | Latest verified |
-|---|---:|---|---|
-| era5_mintemp | 2026-11-03 | NOT_ATTEMPTED_AUTH_BLOCKED; 2m_temperature, daily minimum | unknown |
-| era5_soilmoist | 2026-11-03 | NOT_ATTEMPTED_AUTH_BLOCKED; volumetric_soil_water_layer_1, daily mean | unknown |
-| era5_lai_low | 2026-11-05 | NOT_ATTEMPTED_AUTH_BLOCKED; low-vegetation LAI at 00:00 UTC (monthly-climatology date label) | unknown |
-| agera5_relhum_min | 2026-11-03 | NOT_ATTEMPTED_AUTH_BLOCKED; configured v2.0 relative-humidity 24-hour minimum | unknown |
-| era5land_daily_mean_utc06 | 2026-11-05 | NOT_ATTEMPTED_AUTH_BLOCKED; complete eight-variable request not retrieved | unknown |
+**Verified common endpoint: none.** Only ERA5-Land is verified (latest verified endpoint 2026-11-05); the four failed workflows prevent a common endpoint. The provisional 2026-11-03 date remains METADATA_ONLY for the portfolio as a whole.
 
-All five source families remain METADATA_ONLY. No request acceptance, downloaded artifact, temporal coordinate, returned variable set, or finality evidence was observed in this follow-up. No source is classified as unavailable.
+### Read-only portfolio plan
 
-### Conditional portfolio plan
+The existing portfolio planner ran against the production output root for 2026-11-03, with its plan JSON written under Atlas /tmp. It returned 2026-10-02 through 2026-11-03: 33 daily outputs per product (396 total) and 4 complete ISO weeks per product (48 weekly outputs total). The weeks are 2026-W41, 2026-W42, 2026-W43, 2026-W44. All 12 products had 0/33 daily and 0/4 weekly outputs present within the incremental window. Existing validated coverage through 2026-10-01 (daily) and 2026-09-27 (weekly) is reused; no overlap reprocessing is planned.
 
-The last actual read-only planner result was from the prior audit. It used:
+If all five workflows later verify a common endpoint of 2026-11-03, the portfolio wrapper would schedule 5 source jobs, 5 aggregation jobs, and 1 validation job (11 total). The plan itself contacted no CDS service, submitted no Slurm jobs, and modified no production outputs.
 
-    bash hpc/submit_all_products.sh --through 2026-11-03 --mode plan
+### Decision and next action
 
-For the explicit, still-unverified endpoint, it reported 2026-10-02 through 2026-11-03: 33 incremental daily dates per product, or 396 daily outputs across 12 products. The four complete ISO weeks were 2026-W41 through 2026-W44, or 48 weekly outputs. The plan found 0/33 daily and 0/4 weekly outputs present in that incremental window. The pre-existing baseline was 1,735 daily and 247 weekly outputs per product through 2026-10-01 and 2026-W39; the planner's earliest-missing-date behavior retains those valid outputs. Candidate raw archives remain unqualified for reuse.
+**UPDATE_PARTIALLY_READY.** ERA5-Land is verified, but no common verified endpoint exists because four source workflows errored before request acceptance. Production update mode is not cleared. Diagnose those four errors and repeat bounded retrieval verification for all five sources at 2026-11-03.
 
-The planner was not rerun in this follow-up: there is no verified common endpoint, and the required Atlas wrapper is unavailable. If an update were later approved after all five source workflows verify a common endpoint of 2026-11-03, the documented portfolio path expects 5 source jobs, 5 aggregation jobs, and 1 portfolio validation job (11 Slurm jobs total). The earlier monthly-chunk estimate is 10 source request chunks before any archives are proven reusable. No Slurm jobs were submitted.
-
-After secure ecmwfr_PAT configuration and restoration of the authorized Atlas wrapper, resume verification with:
-
-    Rscript --vanilla scripts/discover_cds_availability.R --probe --max-backtrack-days 3 --output-dir docs
-
-Only if the resulting evidence establishes 2026-11-03 as VERIFIED for all five source workflows should the portfolio update command be considered:
+After all five workflows verify, rerun the plan and review it before using this exact production command:
 
     bash hpc/submit_all_products.sh --through 2026-11-03 --mode update
 
-That update command is conditional and was not run. No production data, manifests, or outputs were modified.
+No production update command or Slurm job was run. The focused Atlas test result for the availability module was 53 passed, 0 failed, 0 warnings.
