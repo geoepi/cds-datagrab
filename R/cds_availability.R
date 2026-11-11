@@ -234,16 +234,45 @@ cds_availability_source_definitions <- function(repo_root = getwd()) {
       received_variables = source$requested_variables, dataset_version = source$dataset_version,
       finality = "UNSPECIFIED", artifact_sha256 = digest::digest(file = target, algo = "sha256")))
   }
-  metadata <- inspect_netcdf_ncdf4(target)
-  returned_names <- names(metadata$variables)
-  observed_variables <- vapply(source$products, function(product_id) {
-    spec <- get_variable_spec(product_id, config)
-    if (length(intersect(spec$netcdf_variable_names, returned_names))) spec$cds_variable else NA_character_
-  }, character(1))
-  observed_variables <- observed_variables[!is.na(observed_variables)]
-  list(status = "VERIFIED", accepted_request = TRUE,
-    observed_dates = as.character(normalize_date_vector(metadata$decoded_dates, "probe temporal coordinates")),
-    received_variables = observed_variables, dataset_version = source$dataset_version,
+  if (identical(source$source_workflow, "era5land_daily_mean_utc06")) {
+    inventory <- tryCatch(era5land_extract_archive(target, file.path(scratch_root, "verified-members"),
+      request$request_hash, as.Date(date)), error = function(e) NULL)
+    if (is.null(inventory)) return(list(status = "UNAVAILABLE", accepted_request = TRUE,
+      reason = "ERA5-Land response was not a readable eight-variable archive", attempt_count = 1L))
+    successful <- inventory$netcdf_inspection_status == "success"
+    observed_variables <- unique(as.character(inventory$cds_variable[successful]))
+    complete_products <- length(inventory$product_id) == length(source$products) &&
+      setequal(as.character(inventory$product_id[successful]), as.character(source$products))
+    if (!complete_products || !all(as.character(source$requested_variables) %in% observed_variables)) {
+      return(list(status = "UNAVAILABLE", accepted_request = TRUE,
+        reason = "ERA5-Land response did not verify every configured variable", attempt_count = 1L))
+    }
+    return(list(status = "VERIFIED", accepted_request = TRUE, observed_dates = as.character(date),
+      received_variables = observed_variables, dataset_version = source$dataset_version,
+      finality = "UNSPECIFIED", artifact_sha256 = digest::digest(file = target, algo = "sha256")))
+  }
+
+  netcdf_paths <- tryCatch(normalize_downloaded_file(target, file.path(scratch_root, "verified-members")),
+    error = function(e) character())
+  if (!length(netcdf_paths)) return(list(status = "UNAVAILABLE", accepted_request = TRUE,
+    reason = "Retrieved response contained no NetCDF member", attempt_count = 1L))
+  metadata <- lapply(netcdf_paths, function(path) tryCatch(inspect_netcdf_ncdf4(path), error = function(e) NULL))
+  metadata <- Filter(Negate(is.null), metadata)
+  if (!length(metadata)) return(list(status = "UNAVAILABLE", accepted_request = TRUE,
+    reason = "Retrieved response contained no readable NetCDF member", attempt_count = 1L))
+  returned_variables <- unique(unlist(lapply(metadata, function(member) {
+    returned_names <- names(member$variables)
+    observed <- vapply(source$products, function(product_id) {
+      spec <- get_variable_spec(product_id, config)
+      if (length(intersect(spec$netcdf_variable_names, returned_names))) spec$cds_variable else NA_character_
+    }, character(1))
+    observed[!is.na(observed)]
+  }), use.names = FALSE))
+  observed_dates <- unique(unlist(lapply(metadata, function(member)
+    tryCatch(as.character(normalize_date_vector(member$decoded_dates, "probe temporal coordinates")),
+      error = function(e) character())), use.names = FALSE))
+  list(status = "VERIFIED", accepted_request = TRUE, observed_dates = observed_dates,
+    received_variables = returned_variables, dataset_version = source$dataset_version,
     finality = "UNSPECIFIED", artifact_sha256 = digest::digest(file = target, algo = "sha256"))
 }
 .cds_availability_cache_key <- function(source, candidate) digest::digest(list(source$source_workflow, source$dataset_id, source$request_fingerprint, as.character(candidate)), algo = "sha256")
