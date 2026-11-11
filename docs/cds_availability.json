@@ -703,9 +703,9 @@
   },
   "decision": {
     "status": "UPDATE_PARTIALLY_READY",
-    "reason": "Authentication works and ERA5-Land is verified through 2026-11-05, including the 2026-11-03 target and all eight configured variables. Four source workflows errored before request acceptance, so no common verified endpoint exists and production update remains blocked.",
+    "reason": "The four prior standalone failures were caused by the discovery path resolver requiring source_family_id. After fixing that mismatch, all four Nov 3 CDS submissions received HTTP 401 authentication/authorization rejections; ERA5-Land remains verified through Nov 5, so no common endpoint exists and production update remains blocked.",
     "recommended_update_command_if_endpoint_is_later_verified": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode plan",
-    "command_status": "READ_ONLY_PLAN_COMPLETED; PRODUCTION_UPDATE_NOT_RUN_INCOMPLETE_SOURCE_VERIFICATION",
+    "command_status": "READ_ONLY_PLAN_COMPLETED; STANDALONE_RETRIEVALS_REJECTED_HTTP_401; PRODUCTION_UPDATE_NOT_RUN",
     "production_update_or_jobs_submitted": false,
     "chime_changes_or_downstream_jobs": false,
     "recommended_production_update_command_if_verification_succeeds": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode update"
@@ -885,6 +885,217 @@
     },
     "production_data_modified": false,
     "recommendation": "Diagnose the four pre-acceptance retrieval errors, then repeat bounded verification for all five sources at 2026-11-03.",
-    "final_decision": "UPDATE_PARTIALLY_READY"
+    "final_decision": "UPDATE_PARTIALLY_READY",
+    "superseded_by": "failure_diagnosis_followup"
+  },
+  "failure_diagnosis_followup": {
+    "audit_timestamp_utc": "2026-11-11T19:10:22Z",
+    "branch": "codex/cds-availability-audit",
+    "branch_base_commit": "7c563db9705cddc2510bce867c7761835f1d818d",
+    "credential_present_in_r": true,
+    "credential_source": "environment or configured secrets.yaml fallback; exact source not recorded",
+    "credential_value_displayed_or_logged": false,
+    "secrets_file_modified": false,
+    "retrieval_client": "R ecmwfr; Python cdsapi not used",
+    "production_request_comparison": {
+      "request_builder": "build_variable_requests()",
+      "payload_builder": "build_cds_api_payload()",
+      "dataset_variable_date_statistic_spatial_selection_and_format": "Generated from the same production configs and builders; no differences found",
+      "standalone_production_storage": "resolve_storage_paths()",
+      "discovery_storage_before_fix": "resolve_source_storage_paths() (requires source_family_id absent from standalone configs)",
+      "production_transfer": "perform_cds_transfer() via download_cds_requests()",
+      "discovery_transfer_before_fix": "custom direct ecmwfr::wf_request() callback bypassing production retry wrapper",
+      "after_fix": "Standalone probes use the production product storage resolver and perform_cds_transfer() wrapper; the ERA5-Land family resolver and previously working probe transfer path are preserved."
+    },
+    "source_outcomes": [
+      {
+        "source_workflow": "era5_mintemp",
+        "requested_variable": "2m_temperature",
+        "original_failure": {
+          "stage": "scratch_path_resolution",
+          "function": "resolve_source_storage_paths()",
+          "error_class": "simpleError",
+          "sanitized_message": "source_family_id is invalid",
+          "request_constructed": true,
+          "submission_attempted": false,
+          "request_accepted": false
+        },
+        "correction": "Use resolve_storage_paths() for standalone product workflows; retain resolve_source_storage_paths() for ERA5-Land. Route transfer through production perform_cds_transfer().",
+        "bounded_retest": {
+          "target_date": "2026-11-03",
+          "status": "ERROR",
+          "stage": "download_response_handling",
+          "error_class": "simpleError;error;condition",
+          "http_status": 401,
+          "sanitized_message": "CDS rejected the request with HTTP 401 (authentication or authorization failure)",
+          "request_constructed": true,
+          "submission_attempted": true,
+          "request_accepted": false,
+          "observed_dates": [],
+          "returned_variables": [],
+          "retry_count": 1,
+          "traceback": [
+            "download_cds_requests()",
+            "stop()",
+            "availability live probe error boundary"
+          ]
+        }
+      },
+      {
+        "source_workflow": "era5_soilmoist",
+        "requested_variable": "volumetric_soil_water_layer_1",
+        "original_failure": {
+          "stage": "scratch_path_resolution",
+          "function": "resolve_source_storage_paths()",
+          "error_class": "simpleError",
+          "sanitized_message": "source_family_id is invalid",
+          "request_constructed": true,
+          "submission_attempted": false,
+          "request_accepted": false
+        },
+        "correction": "Use resolve_storage_paths() for standalone product workflows; retain resolve_source_storage_paths() for ERA5-Land. Route transfer through production perform_cds_transfer().",
+        "bounded_retest": {
+          "target_date": "2026-11-03",
+          "status": "ERROR",
+          "stage": "download_response_handling",
+          "error_class": "simpleError;error;condition",
+          "http_status": 401,
+          "sanitized_message": "CDS rejected the request with HTTP 401 (authentication or authorization failure)",
+          "request_constructed": true,
+          "submission_attempted": true,
+          "request_accepted": false,
+          "observed_dates": [],
+          "returned_variables": [],
+          "retry_count": 1,
+          "traceback": [
+            "download_cds_requests()",
+            "stop()",
+            "availability live probe error boundary"
+          ]
+        }
+      },
+      {
+        "source_workflow": "era5_lai_low",
+        "requested_variable": "leaf_area_index_low_vegetation",
+        "original_failure": {
+          "stage": "scratch_path_resolution",
+          "function": "resolve_source_storage_paths()",
+          "error_class": "simpleError",
+          "sanitized_message": "source_family_id is invalid",
+          "request_constructed": true,
+          "submission_attempted": false,
+          "request_accepted": false
+        },
+        "correction": "Use resolve_storage_paths() for standalone product workflows; retain resolve_source_storage_paths() for ERA5-Land. Route transfer through production perform_cds_transfer().",
+        "bounded_retest": {
+          "target_date": "2026-11-03",
+          "status": "ERROR",
+          "stage": "download_response_handling",
+          "error_class": "simpleError;error;condition",
+          "http_status": 401,
+          "sanitized_message": "CDS rejected the request with HTTP 401 (authentication or authorization failure)",
+          "request_constructed": true,
+          "submission_attempted": true,
+          "request_accepted": false,
+          "observed_dates": [],
+          "returned_variables": [],
+          "retry_count": 1,
+          "traceback": [
+            "download_cds_requests()",
+            "stop()",
+            "availability live probe error boundary"
+          ]
+        }
+      },
+      {
+        "source_workflow": "agera5_relhum_min",
+        "requested_variable": "2m_relative_humidity_derived",
+        "original_failure": {
+          "stage": "scratch_path_resolution",
+          "function": "resolve_source_storage_paths()",
+          "error_class": "simpleError",
+          "sanitized_message": "source_family_id is invalid",
+          "request_constructed": true,
+          "submission_attempted": false,
+          "request_accepted": false
+        },
+        "correction": "Use resolve_storage_paths() for standalone product workflows; retain resolve_source_storage_paths() for ERA5-Land. Route transfer through production perform_cds_transfer().",
+        "bounded_retest": {
+          "target_date": "2026-11-03",
+          "status": "ERROR",
+          "stage": "download_response_handling",
+          "error_class": "simpleError;error;condition",
+          "http_status": 401,
+          "sanitized_message": "CDS rejected the request with HTTP 401 (authentication or authorization failure)",
+          "request_constructed": true,
+          "submission_attempted": true,
+          "request_accepted": false,
+          "observed_dates": [],
+          "returned_variables": [],
+          "retry_count": 1,
+          "traceback": [
+            "download_cds_requests()",
+            "stop()",
+            "availability live probe error boundary"
+          ]
+        }
+      }
+    ],
+    "latest_verified_endpoint_by_source": {
+      "era5_mintemp": null,
+      "era5_soilmoist": null,
+      "era5_lai_low": null,
+      "agera5_relhum_min": null,
+      "era5land_daily_mean_utc06": "2026-11-05"
+    },
+    "verified_common_endpoint": null,
+    "existing_era5land_evidence": {
+      "target_date": "2026-11-03",
+      "latest_verified": "2026-11-05",
+      "verified_variables": [
+        "2m_temperature",
+        "soil_temperature_level_1",
+        "soil_temperature_level_2",
+        "volumetric_soil_water_layer_1",
+        "volumetric_soil_water_layer_2",
+        "surface_pressure",
+        "leaf_area_index_high_vegetation",
+        "leaf_area_index_low_vegetation"
+      ]
+    },
+    "read_only_portfolio_plan": {
+      "command": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode plan",
+      "requested_window": "2026-10-02 through 2026-11-03",
+      "endpoint_status": "UNVERIFIED",
+      "incremental_daily_dates_per_product": 33,
+      "daily_output_count": 396,
+      "complete_iso_weeks_per_product": 4,
+      "complete_iso_week_ids": [
+        "2026-W41",
+        "2026-W42",
+        "2026-W43",
+        "2026-W44"
+      ],
+      "weekly_output_count": 48,
+      "daily_outputs_present_in_increment": 0,
+      "weekly_outputs_present_in_increment": 0,
+      "existing_valid_daily_baseline": "through 2026-10-01",
+      "existing_valid_weekly_baseline": "through 2026-09-27",
+      "expected_slurm_workload": {
+        "source_jobs": 5,
+        "aggregation_jobs": 5,
+        "validation_jobs": 1,
+        "total_jobs": 11
+      },
+      "production_jobs_submitted": false,
+      "production_outputs_modified": false
+    },
+    "decision": {
+      "status": "UPDATE_PARTIALLY_READY",
+      "reason": "ERA5-Land is verified through 2026-11-05, but all four standalone Nov 3 retrievals were rejected with HTTP 401; no verified common endpoint exists.",
+      "blocker": "CDS authentication/authorization rejection (HTTP 401); resolve PAT validity or account/dataset permissions before rerunning bounded probes.",
+      "recommended_production_update_command": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode update",
+      "production_update_allowed": false
+    }
   }
 }

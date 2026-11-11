@@ -7,6 +7,55 @@ CDS_AVAILABILITY_CATALOGUE_BASE <- "https://cds.climate.copernicus.eu/api/catalo
   if (length(value) != 1L) as.Date(NA) else value
 }
 .cds_availability_iso <- function(x) if (length(x) != 1L || is.na(x)) NULL else format(as.Date(x), "%Y-%m-%d")
+.cds_availability_sanitize_error <- function(e) {
+  message <- conditionMessage(e)
+  token <- Sys.getenv("ecmwfr_PAT", unset = "")
+  if (nzchar(token)) message <- gsub(token, "[REDACTED]", message, fixed = TRUE)
+  message <- gsub("(?i)(authorization\\s*[:=]\\s*bearer\\s+)[^[:space:],;]+", "\\1[REDACTED]", message, perl = TRUE)
+  message <- gsub("(?i)(ecmwfr_PAT\\s*[:=]\\s*)[^[:space:],;]+", "\\1[REDACTED]", message, perl = TRUE)
+  message <- gsub("[[:cntrl:]]+", " ", message)
+  substr(trimws(gsub("[[:space:]]+", " ", message)), 1L, 1000L)
+}
+.cds_availability_http_status <- function(message) {
+  pattern <- "(?:HTTP[[:space:]:]+|Authentication failed[[:space:]]*|status[[:space:]]*[:=]?[[:space:]]*)([0-9]{3})"
+  match <- regexec(pattern, message, ignore.case = TRUE, perl = TRUE)
+  value <- regmatches(message, match)[[1L]]
+  if (length(value) < 2L) NA_integer_ else suppressWarnings(as.integer(value[[2L]]))
+}
+.cds_availability_call_stack <- function() {
+  calls <- sys.calls()
+  frames <- vapply(calls, function(call) {
+    call_head <- call[[1L]]
+    if (is.symbol(call_head)) as.character(call_head) else if (is.call(call_head)) paste(deparse(call_head), collapse = "") else "call"
+  }, character(1))
+  unique(frames[nzchar(frames)])
+}
+.cds_availability_error_details <- function(e, stage, request_constructed = FALSE,
+                                             submission_attempted = FALSE, traceback = NULL) {
+  frames <- traceback %||% .cds_availability_call_stack()
+  http_status <- .cds_availability_http_status(conditionMessage(e))
+  safe_message <- if (identical(http_status, 401L)) "CDS rejected the request with HTTP 401 (authentication or authorization failure)" else
+    if (identical(http_status, 403L)) "CDS rejected the request with HTTP 403 (authorization failure)" else
+      .cds_availability_sanitize_error(e)
+  accepted <- if (!isTRUE(submission_attempted) || http_status %in% c(400L, 401L, 403L, 404L, 422L)) FALSE else NA
+  list(status = "ERROR", http_status = http_status,
+    error_stage = as.character(stage), error_class = paste(class(e), collapse = ";"),
+    error_message = safe_message,
+    error_traceback = head(frames, 12L), request_constructed = isTRUE(request_constructed),
+    submission_attempted = isTRUE(submission_attempted),
+    accepted_request = accepted)
+}
+.cds_availability_probe_storage_paths <- function(source, config, repo_root, scratch_root) {
+  if (identical(source$source_workflow, "era5land_daily_mean_utc06")) {
+    resolve_source_storage_paths(config, repo_root, output_root = scratch_root, create = TRUE)
+  } else {
+    resolve_storage_paths(config, repo_root, output_root = scratch_root, create = TRUE)
+  }
+}
+.cds_availability_production_transfer <- function(dataset, payload, target, on_submission_attempt = function() {}) {
+  on_submission_attempt()
+  perform_cds_transfer(dataset, payload, target)
+}
 .cds_availability_safe_error <- function(e) {
   message <- conditionMessage(e)
   code <- regmatches(message, regexpr("HTTP[[:space:]:]+[0-9]{3}", message, ignore.case = TRUE))
@@ -149,12 +198,13 @@ cds_availability_source_definitions <- function(repo_root = getwd()) {
   for (attempt in seq_len(max_attempts)) {
     result <- tryCatch(probe_fn(source, date), error = function(e) {
       message <- conditionMessage(e)
-      code <- suppressWarnings(as.integer(sub(".*HTTP[[:space:]:]+([0-9]{3}).*", "\\1", message, ignore.case = TRUE)))
+      code <- .cds_availability_http_status(message)
       retry_after <- suppressWarnings(as.numeric(sub("(?is).*retry[- _]after[[:space:]:=]+([0-9]+).*", "\\1", message, perl = TRUE)))
       if (!is.finite(retry_after)) retry_after <- NA_real_
-      list(status = "ERROR", http_status = code,
+      details <- .cds_availability_error_details(e, "probe_invocation")
+      c(details, list(http_status = code,
         retry_after_seconds = retry_after,
-        retryable = grepl("429|500|502|503|504|timeout|timed out|connection reset|temporary DNS", message, ignore.case = TRUE))
+        retryable = grepl("429|500|502|503|504|timeout|timed out|connection reset|temporary DNS", message, ignore.case = TRUE)))
     })
     code <- suppressWarnings(as.integer(result$http_status %||% NA_integer_))
     retryable <- isTRUE(result$retryable) || (!is.na(code) && (code == 429L || code %in% c(500L, 502L, 503L, 504L)))
@@ -172,7 +222,11 @@ cds_availability_source_definitions <- function(repo_root = getwd()) {
   list(status = "ERROR", attempt_count = max_attempts, error_summary = "CDS retrieval attempts exhausted")
 }
 .cds_availability_classify_probe <- function(source, requested_date, result) {
-  if (identical(result$status, "ERROR")) return(list(status = "ERROR", reason = result$error_summary %||% "CDS retrieval failed"))
+  if (identical(result$status, "ERROR")) {
+    detail <- if (!is.null(result$error_message)) paste0(result$error_class %||% "error", " during ",
+      result$error_stage %||% "probe", ": ", result$error_message) else "CDS retrieval failed"
+    return(list(status = "ERROR", reason = result$error_summary %||% detail))
+  }
   if (identical(result$status, "UNAVAILABLE")) return(list(status = "UNAVAILABLE", reason = result$reason %||% "Candidate date returned no complete source data"))
   expected_version <- source$dataset_version
   returned_version <- as.character(result$dataset_version %||% NA_character_)
@@ -200,25 +254,47 @@ cds_availability_source_definitions <- function(repo_root = getwd()) {
     attempt_count = as.integer(result$attempt_count %||% 1L))
 }
 .cds_availability_live_probe <- function(source, date, repo_root) {
-  if (!requireNamespace("ecmwfr", quietly = TRUE)) stop("The ecmwfr package is required for bounded retrieval probes", call. = FALSE)
-  config <- read_pipeline_config(source$config_path)
-  scratch_root <- tempfile("cds-availability-probe-")
-  dir.create(scratch_root, recursive = TRUE)
-  on.exit(unlink(scratch_root, recursive = TRUE, force = TRUE), add = TRUE)
-  writeLines('{"application":"cds-datagrab","schema_version":1}', file.path(scratch_root, ".cds-datagrab-root"), useBytes = TRUE)
-  config <- resolve_config_paths(config, repo_root, output_root = scratch_root, create = FALSE)
-  domain <- diagnose_spatial_domain(config$spatial$template_path, config$spatial$bbox_path, config)
-  requests <- if (identical(source$source_workflow, "era5land_daily_mean_utc06")) {
-    build_era5land_daily_mean_requests(as.Date(date), domain$final_cds_area, config, source$products)
-  } else {
-    build_variable_requests(as.Date(date), domain$final_cds_area, config, get_variable_spec(source$products[[1L]], config))
-  }
-  if (length(requests) != 1L) stop("A one-date discovery probe must build exactly one request", call. = FALSE)
-  paths <- resolve_source_storage_paths(config, repo_root, output_root = scratch_root, create = TRUE)
-  transfer <- function(dataset, payload, target)
-    ecmwfr::wf_request(request = c(list(dataset_short_name = dataset), payload), transfer = TRUE, path = dirname(target))
-  request <- requests[[1L]]
-  download <- download_cds_requests(requests, paths = paths, config = config, dry_run = FALSE, overwrite = TRUE, transfer_fun = transfer)
+  stage <- "client_check"
+  request_constructed <- FALSE
+  submission_attempted <- FALSE
+  failure_traceback <- character()
+  tryCatch(withCallingHandlers({
+    if (!requireNamespace("ecmwfr", quietly = TRUE)) stop("The ecmwfr package is required for bounded retrieval probes", call. = FALSE)
+    stage <- "configuration"
+    config <- read_pipeline_config(source$config_path)
+    scratch_root <- tempfile("cds-availability-probe-")
+    dir.create(scratch_root, recursive = TRUE)
+    on.exit(unlink(scratch_root, recursive = TRUE, force = TRUE), add = TRUE)
+    writeLines('{"application":"cds-datagrab","schema_version":1}', file.path(scratch_root, ".cds-datagrab-root"), useBytes = TRUE)
+    config <- resolve_config_paths(config, repo_root, output_root = scratch_root, create = FALSE)
+    stage <- "spatial_preflight"
+    domain <- diagnose_spatial_domain(config$spatial$template_path, config$spatial$bbox_path, config)
+    stage <- "request_construction"
+    requests <- if (identical(source$source_workflow, "era5land_daily_mean_utc06")) {
+      build_era5land_daily_mean_requests(as.Date(date), domain$final_cds_area, config, source$products)
+    } else {
+      build_variable_requests(as.Date(date), domain$final_cds_area, config, get_variable_spec(source$products[[1L]], config))
+    }
+    if (length(requests) != 1L) stop("A one-date discovery probe must build exactly one request", call. = FALSE)
+    request <- requests[[1L]]
+    request_constructed <- TRUE
+    stage <- "scratch_path_resolution"
+    paths <- .cds_availability_probe_storage_paths(source, config, repo_root, scratch_root)
+    transfer <- function(dataset, payload, target) {
+      stage <<- "cds_submission"
+      on.exit(stage <<- "download_response_handling", add = TRUE)
+      if (identical(source$source_workflow, "era5land_daily_mean_utc06")) {
+        submission_attempted <<- TRUE
+        ecmwfr::wf_request(request = c(list(dataset_short_name = dataset), payload),
+          transfer = TRUE, path = dirname(target))
+      } else {
+        .cds_availability_production_transfer(dataset, payload, target,
+          on_submission_attempt = function() submission_attempted <<- TRUE)
+      }
+    }
+    stage <- "download_preflight"
+    download <- download_cds_requests(requests, paths = paths, config = config, dry_run = FALSE, overwrite = TRUE, transfer_fun = transfer)
+    stage <- "response_validation"
   if (!nrow(download) || !isTRUE(download$valid[[1L]])) {
     summary <- .cds_availability_safe_error(simpleError(as.character(download$failure_reason[[1L]] %||% "CDS response failed validation")))
     return(list(status = "UNAVAILABLE", accepted_request = TRUE, reason = summary, attempt_count = 1L))
@@ -274,6 +350,9 @@ cds_availability_source_definitions <- function(repo_root = getwd()) {
   list(status = "VERIFIED", accepted_request = TRUE, observed_dates = observed_dates,
     received_variables = returned_variables, dataset_version = source$dataset_version,
     finality = "UNSPECIFIED", artifact_sha256 = digest::digest(file = target, algo = "sha256"))
+  }, error = function(e) failure_traceback <<- .cds_availability_call_stack()),
+  error = function(e) .cds_availability_error_details(e, stage, request_constructed,
+    submission_attempted, failure_traceback))
 }
 .cds_availability_cache_key <- function(source, candidate) digest::digest(list(source$source_workflow, source$dataset_id, source$request_fingerprint, as.character(candidate)), algo = "sha256")
 
@@ -337,9 +416,10 @@ discover_cds_availability <- function(repo_root = getwd(), sources = NULL, fetch
           raw <- .cds_availability_probe_once(source, probe_date, active_probe, max_attempts = max_probe_attempts, sleep_fn = sleep_fn)
           classified <- .cds_availability_classify_probe(source, probe_date, raw)
           if (isTRUE(raw$accepted_request) && is.null(row$latest_accepted_request)) row$latest_accepted_request <- as.character(probe_date)
-          row$probe_attempts[[length(row$probe_attempts) + 1L]] <- list(date = as.character(probe_date), status = classified$status,
+          row$probe_attempts[[length(row$probe_attempts) + 1L]] <- c(list(date = as.character(probe_date), status = classified$status,
             reason = classified$reason, attempt_count = classified$attempt_count %||% raw$attempt_count %||% 1L,
-            accepted_request = isTRUE(raw$accepted_request))
+            accepted_request = if (is.null(raw$accepted_request)) FALSE else raw$accepted_request), raw[intersect(names(raw), c("http_status", "error_stage", "error_class",
+              "error_message", "error_traceback", "request_constructed", "submission_attempted"))])
           if (identical(classified$status, "VERIFIED")) {
             row$verification_status <- "VERIFIED"
             row$latest_verified <- as.character(probe_date)

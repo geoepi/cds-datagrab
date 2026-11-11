@@ -130,3 +130,25 @@ After all five workflows verify, rerun the plan and review it before using this 
     bash hpc/submit_all_products.sh --through 2026-11-03 --mode update
 
 No production update command or Slurm job was run. The focused Atlas test result for the availability module was 53 passed, 0 failed, 0 warnings.
+
+## Standalone failure diagnosis and bounded retest — 2026-11-11
+
+This section supersedes the earlier generic error descriptions. The saved audit JSON had dropped exception details. A bounded diagnostic replay established that the four original failures were local path-resolution errors: `.cds_availability_live_probe()` passed every source to `resolve_source_storage_paths()`, which requires `project.source_family_id`. The four standalone configs have no such field, so each raised `simpleError: source_family_id is invalid` after request construction and before CDS submission. ERA5-Land has a configured family ID and uses this resolver in production.
+
+The request definitions themselves match production: discovery uses `build_variable_requests()` and `build_cds_api_payload()` with the source configs, so dataset, variable, date, statistic/time, area, and format were not duplicated. Production standalone workflows use `resolve_storage_paths()`; the shared ERA5-Land workflow uses `resolve_source_storage_paths()`. Standalone discovery transfers now use the production `perform_cds_transfer()` wrapper and retry policy. The previously working ERA5-Land probe transfer path remains unchanged. No scientific-configuration changes were made.
+
+One bounded request per affected workflow was then submitted for 2026-11-03 using the production request and transfer functions, into isolated scratch storage. All four requests were constructed and reached CDS, which rejected each with HTTP 401 (`Authentication failed / operation not allowed`). The download wrapper surfaced a `simpleError`; its sanitized traceback passes through `download_cds_requests()` and the error boundary. None was accepted, and no returned artifact, temporal coordinate, or variable was available for inspection. A credential was available to the R process; its value was not displayed, logged, copied, or committed, and the secrets file was not modified. No retries were made after the authentication rejection. The 401 does not distinguish a bad/expired PAT from missing CDS account or dataset authorization; that is the remaining blocker.
+
+| Source workflow | Nov 3 request | Request accepted | Returned observation evidence | Latest verified endpoint |
+|---|---|---:|---|---:|
+| era5_mintemp | CDS HTTP 401; authentication/authorization rejection | No | None | None |
+| era5_soilmoist | CDS HTTP 401; authentication/authorization rejection | No | None | None |
+| era5_lai_low | CDS HTTP 401; authentication/authorization rejection | No | None | None |
+| agera5_relhum_min | CDS HTTP 401; authentication/authorization rejection | No | None | None |
+| era5land_daily_mean_utc06 | Prior successful retrieval | Yes | 2026-11-03; all 8 configured variables; latest verified 2026-11-05 | 2026-11-05 |
+
+**Verified common endpoint: none.** The four standalone sources remain unverified. 2026-11-03 is still only a catalogue candidate for the complete portfolio. The previously run read-only portfolio plan remains conditional on that target: 2026-10-02 through 2026-11-03, 33 incremental daily outputs per product (396 total), 4 complete ISO weeks per product (48 total; 2026-W41 through 2026-W44), with 0 outputs present in that incremental window. It reuses the valid daily baseline through 2026-10-01 and weekly baseline through 2026-09-27. Expected update workload remains 5 source jobs, 5 aggregation jobs, and 1 portfolio-validation job (11 total). No jobs were submitted and production data were not modified.
+
+**Decision: `UPDATE_PARTIALLY_READY`.** ERA5-Land is verified through 2026-11-05, but the four HTTP 401 responses prevent a common endpoint and block a portfolio update. After CDS credential/account permissions are corrected, rerun the bounded Nov 3 retrieval probes and the read-only plan. Do not run production update mode before all five sources share a verified endpoint. The production command, once verified and reviewed, remains:
+
+    bash hpc/submit_all_products.sh --through 2026-11-03 --mode update

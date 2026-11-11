@@ -118,6 +118,67 @@ test_that("credential loader rejects missing or malformed fallback YAML", {
   expect_false(.cds_availability_load_credentials(secret_path))
   expect_false(nzchar(Sys.getenv("ecmwfr_PAT", unset = "")))
 })
+test_that("bounded discovery transfer delegates to the production transfer and records its entry", {
+  called <- NULL
+  attempted <- FALSE
+  local_mocked_bindings(perform_cds_transfer = function(dataset, payload, target) {
+    called <<- list(dataset = dataset, payload = payload, target = target)
+    "production-transfer-result"
+  }, .package = "cdsdatagrab")
+
+  result <- .cds_availability_production_transfer("dataset-id", list(variable = "configured_variable"),
+    "/scratch/request.nc", on_submission_attempt = function() attempted <<- TRUE)
+
+  expect_true(attempted)
+  expect_identical(result, "production-transfer-result")
+  expect_identical(called, list(dataset = "dataset-id", payload = list(variable = "configured_variable"),
+    target = "/scratch/request.nc"))
+})
+test_that("standalone probes use product storage while ERA5-Land keeps family storage", {
+  sources <- availability_fake_sources()
+  calls <- character()
+  local_mocked_bindings(
+    resolve_storage_paths = function(...) { calls <<- c(calls, "product"); list(kind = "product") },
+    resolve_source_storage_paths = function(...) { calls <<- c(calls, "family"); list(kind = "family") },
+    .package = "cdsdatagrab"
+  )
+
+  paths <- lapply(sources, .cds_availability_probe_storage_paths, config = list(),
+    repo_root = "/repo", scratch_root = "/scratch")
+
+  expect_identical(calls, c(rep("product", 4L), "family"))
+  expect_identical(vapply(paths, `[[`, character(1), "kind"), c(rep("product", 4L), "family"))
+})
+test_that("bounded probe errors retain sanitized stage, class, and request status", {
+  withr::local_envvar(c(ecmwfr_PAT = "dummy-cds-token"))
+  source <- availability_fake_sources()[[1L]]
+  result <- .cds_availability_probe_once(source, "2026-11-03", function(...) {
+    stop(simpleError("HTTP 503 Authorization: Bearer dummy-cds-token; ecmwfr_PAT=dummy-cds-token"))
+  }, max_attempts = 1L)
+
+  expect_identical(result$status, "ERROR")
+  expect_identical(result$error_stage, "probe_invocation")
+  expect_match(result$error_class, "simpleError")
+  expect_identical(result$http_status, 503L)
+  expect_true(grepl("\\[REDACTED\\]", result$error_message))
+  expect_false(grepl("dummy-cds-token", result$error_message, fixed = TRUE))
+  expect_false(result$request_constructed)
+  expect_false(result$submission_attempted)
+  expect_false(result$accepted_request)
+  expect_true(length(result$error_traceback) > 0L)
+})
+test_that("CDS authentication rejection is classified without exposing an endpoint identifier", {
+  error <- simpleError(paste("permission denied Authentication failed401 operation not allowed",
+    "https://cds.climate.copernicus.eu/api/retrieve/v1/processes/example/execute-123456"))
+  result <- .cds_availability_error_details(error, "cds_submission", request_constructed = TRUE,
+    submission_attempted = TRUE, traceback = c("perform_cds_transfer", "wf_request"))
+
+  expect_identical(result$http_status, 401L)
+  expect_false(result$accepted_request)
+  expect_true(result$submission_attempted)
+  expect_match(result$error_message, "HTTP 401", fixed = TRUE)
+  expect_false(grepl("execute-123456", result$error_message, fixed = TRUE))
+})
 test_that("discovery uses the repo-root credential fallback for bounded probes", {
   repo_root <- tempfile("cds-availability-credentials-")
   dir.create(repo_root)
