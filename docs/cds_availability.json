@@ -1174,5 +1174,90 @@
     "decision": "UPDATE_PARTIALLY_READY",
     "production_jobs_submitted": false,
     "production_data_modified": false
+  },
+  "definitive_era5_mintemp_reference_followup": {
+    "audit_timestamp_utc": "2026-11-11T20:19:27Z",
+    "source_sha": "066c3a24e15fbea495bfb957c40612e802fc9f27",
+    "installed_package_source_sha": "066c3a24e15fbea495bfb957c40612e802fc9f27",
+    "installed_package_version": "0.1.0",
+    "ecmwfr_version": "2.0.3",
+    "focused_test_result": {
+      "command": "devtools::test(filter=\"cds-availability\")",
+      "passed": 73,
+      "failed": 0,
+      "warnings": 0,
+      "installed_package_simulated_401_sanitization": "PASS",
+      "installed_package_simulated_503_credential_redaction": "PASS",
+      "trace_capture_simulated_401": "PASS"
+    },
+    "authentication": {
+      "api_base_url": "https://cds.climate.copernicus.eu/api",
+      "mechanism": "ecmwfr_PAT sent by ecmwfr in PRIVATE-TOKEN header",
+      "credential_source": "secrets.yaml fallback loaded into ecmwfr_PAT",
+      "ecmwfr_PAT_present_before_loader": false,
+      "ecmwfr_PAT_present_after_loader": true,
+      "credential_value_displayed_logged_copied_or_committed": false,
+      "same_ecmwfr_PAT_resolution_for_standalone_and_era5land": true,
+      "atlas_cdsapirc_present": false
+    },
+    "request": {
+      "dataset_short_name": "derived-era5-single-levels-daily-statistics",
+      "product_type": "reanalysis",
+      "variable": "2m_temperature",
+      "year": "2026",
+      "month": "11",
+      "day": "03",
+      "daily_statistic": "daily_minimum",
+      "time_zone": "utc+00:00",
+      "frequency": "6_hourly",
+      "matches_operator_reference_fields": true,
+      "production_only_fields_omitted_for_reference_reproduction": ["area", "data_format", "download_format"]
+    },
+    "bounded_reproduction": {
+      "wf_request_invocations": 1,
+      "submission_retries": 0,
+      "timeout_seconds": 300,
+      "output": "isolated temporary scratch, removed after call",
+      "request_constructed": true,
+      "submission_attempted": true,
+      "request_accepted": false,
+      "execution_stage": "cds_task_submission",
+      "http_status": 401,
+      "failing_endpoint": "https://cds.climate.copernicus.eu/api/retrieve/v1/processes/derived-era5-single-levels-daily-statistics/execute",
+      "error_class": "simpleError;error;condition",
+      "sanitized_message": "CDS rejected the request with HTTP 401 (authentication or authorization failure)",
+      "observed_dates": [],
+      "returned_variables": [],
+      "relevant_source_confirmed_call_path": [
+        "ecmwfr::wf_request()",
+        "ds_service$submit()",
+        "httr::VERB(POST, .../execute)",
+        "HTTP error check",
+        "stop()"
+      ],
+      "traceback_note": "The existing helper returned the outer 12 call-head frames; the relevant inner path was confirmed from the installed ecmwfr function bodies.",
+      "production_data_modified": false,
+      "slurm_jobs_submitted": false
+    },
+    "ecmwfr_catalogue_resolution": {
+      "occurs_before_task_submission": true,
+      "get_endpoint_pattern": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/",
+      "http_error_obscuring": "wf_datasets() maps HTTP errors to Server not reachable; wf_check_request() catches the error and guess_service() emits a generic dataset-not-found/credential-mismatch error",
+      "catalogue_http_status_captured_in_reference_run": null,
+      "reason_not_captured": "The live tracer recorded httr::VERB submissions; ecmwfr catalogue lookup uses httr::GET. Reaching the task POST shows service resolution succeeded in this run."
+    },
+    "diagnosis": "The exact operator reference parameters were rejected by CDS with HTTP 401 at the authenticated task-submission endpoint. Request parameters and omitted production-only spatial/format fields do not explain the response. The Atlas PAT is present and is sent through ecmwfr, but evidence cannot distinguish PAT validity from account or dataset authorization.",
+    "other_standalone_sources_retested": false,
+    "latest_verified_endpoint_by_source": {
+      "era5_mintemp": null,
+      "era5_soilmoist": null,
+      "era5_lai_low": null,
+      "agera5_relhum_min": null,
+      "era5land_daily_mean_utc06": "2026-11-05"
+    },
+    "verified_common_endpoint": null,
+    "decision": "UPDATE_PARTIALLY_READY",
+    "production_jobs_submitted": false,
+    "production_data_modified": false
   }
 }
