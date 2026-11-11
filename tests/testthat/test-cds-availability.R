@@ -93,6 +93,49 @@ test_that("incomplete variable coverage cannot be verified", {
   expect_null(audit$portfolio$verified_common_endpoint)
 })
 
+test_that("credential loader falls back to YAML only when the environment token is absent", {
+  secret_path <- tempfile(fileext = ".yaml")
+  withr::defer(unlink(secret_path, force = TRUE), envir = testthat::teardown_env())
+  withr::local_envvar(c(ecmwfr_PAT = NA_character_))
+
+  writeLines("ecmwfr_PAT: dummy-test-token", secret_path)
+  expect_true(.cds_availability_load_credentials(secret_path))
+  expect_identical(Sys.getenv("ecmwfr_PAT"), "dummy-test-token")
+
+  Sys.setenv(ecmwfr_PAT = "dummy-environment-token")
+  writeLines("not_valid_yaml: [", secret_path)
+  expect_true(.cds_availability_load_credentials(secret_path))
+  expect_identical(Sys.getenv("ecmwfr_PAT"), "dummy-environment-token")
+})
+
+test_that("credential loader rejects missing or malformed fallback YAML", {
+  secret_path <- tempfile(fileext = ".yaml")
+  withr::defer(unlink(secret_path, force = TRUE), envir = testthat::teardown_env())
+  withr::local_envvar(c(ecmwfr_PAT = NA_character_))
+
+  expect_false(.cds_availability_load_credentials(secret_path))
+  writeLines("other_key: value", secret_path)
+  expect_false(.cds_availability_load_credentials(secret_path))
+  expect_false(nzchar(Sys.getenv("ecmwfr_PAT", unset = "")))
+})
+test_that("discovery uses the repo-root credential fallback for bounded probes", {
+  repo_root <- tempfile("cds-availability-credentials-")
+  dir.create(repo_root)
+  withr::defer(unlink(repo_root, recursive = TRUE, force = TRUE), envir = testthat::teardown_env())
+  withr::local_envvar(c(ecmwfr_PAT = NA_character_))
+  writeLines("ecmwfr_PAT: dummy-discovery-token", file.path(repo_root, "secrets.yaml"))
+
+  sources <- availability_fake_sources()
+  fake <- availability_fake_fetcher(sources)
+  # This temporary fixture is not a Git checkout; suppress its expected repository-SHA lookup warning.
+  audit <- suppressWarnings(discover_cds_availability(repo_root = repo_root, sources = sources,
+    fetch_json = fake$fetch, probe = TRUE, probe_fn = availability_verified_probe,
+    max_backtrack_days = 0L, audit_time = as.POSIXct("2026-11-11 15:31:58", tz = "UTC")))
+
+  expect_true(nzchar(Sys.getenv("ecmwfr_PAT", unset = "")))
+  expect_true(all(vapply(audit$sources, function(x) x$verification_status == "VERIFIED", logical(1))))
+  expect_equal(audit$portfolio$verified_common_endpoint, "2026-11-03")
+})
 test_that("missing credentials prevent retrieval probes", {
   sources <- availability_fake_sources()
   called <- FALSE

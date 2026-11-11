@@ -131,7 +131,19 @@ cds_availability_source_definitions <- function(repo_root = getwd()) {
     cads_update_frequency = as.character(collection[["cads:update_frequency"]] %||% NA_character_),
     cads_fair = collection[["cads:fair"]] %||% NULL, constraints = constraints)
 }
-.cds_availability_credential_present <- function() nzchar(Sys.getenv("ecmwfr_PAT", unset = "")) || file.exists(path.expand("~/.cdsapirc"))
+.cds_availability_load_credentials <- function(secrets_file) {
+  if (nzchar(Sys.getenv("ecmwfr_PAT", unset = ""))) return(TRUE)
+  if (is.null(secrets_file) || length(secrets_file) != 1L || !file.exists(secrets_file)) return(FALSE)
+  secrets <- tryCatch(yaml::read_yaml(secrets_file), error = function(e) NULL)
+  token <- if (is.list(secrets)) secrets$ecmwfr_PAT %||% NULL else NULL
+  if (!is.character(token) || length(token) != 1L || is.na(token) || !nzchar(token)) return(FALSE)
+  Sys.setenv(ecmwfr_PAT = token)
+  TRUE
+}
+.cds_availability_credential_present <- function(secrets_file = NULL) {
+  if (nzchar(Sys.getenv("ecmwfr_PAT", unset = ""))) return(TRUE)
+  .cds_availability_load_credentials(secrets_file)
+}
 
 .cds_availability_probe_once <- function(source, date, probe_fn, max_attempts = 3L, sleep_fn = Sys.sleep) {
   for (attempt in seq_len(max_attempts)) {
@@ -237,11 +249,12 @@ cds_availability_source_definitions <- function(repo_root = getwd()) {
 .cds_availability_cache_key <- function(source, candidate) digest::digest(list(source$source_workflow, source$dataset_id, source$request_fingerprint, as.character(candidate)), algo = "sha256")
 
 discover_cds_availability <- function(repo_root = getwd(), sources = NULL, fetch_json = cds_availability_fetch_json,
-  probe = FALSE, credential_present = .cds_availability_credential_present(), probe_fn = NULL,
+  probe = FALSE, credential_present = NULL, probe_fn = NULL,
   max_backtrack_days = 3L, max_probe_attempts = 3L, sleep_fn = Sys.sleep, cache = NULL, audit_time = Sys.time()) {
   repo_root <- normalizePath(repo_root, winslash = "/", mustWork = TRUE)
   if (is.null(sources)) sources <- cds_availability_source_definitions(repo_root)
   if (length(sources) != 5L) stop("Exactly five source workflows are required", call. = FALSE)
+  if (is.null(credential_present)) credential_present <- isTRUE(probe) && .cds_availability_credential_present(file.path(repo_root, "secrets.yaml"))
   metadata_cache <- new.env(parent = emptyenv())
   probe_cache <- list()
   results <- lapply(sources, function(source) {
