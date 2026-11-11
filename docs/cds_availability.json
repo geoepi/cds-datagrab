@@ -1097,5 +1097,82 @@
       "recommended_production_update_command": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode update",
       "production_update_allowed": false
     }
+  },
+  "known_working_reference_diagnosis": {
+    "audit_timestamp_utc": "2026-11-11T19:53:59Z",
+    "workflow": "era5_mintemp",
+    "reference_target_date": "2026-11-03",
+    "reference_request": {
+      "dataset_short_name": "derived-era5-single-levels-daily-statistics",
+      "product_type": "reanalysis",
+      "variable": "2m_temperature",
+      "year": "2026",
+      "month": "11",
+      "day": "03",
+      "daily_statistic": "daily_minimum",
+      "time_zone": "utc+00:00",
+      "frequency": "6_hourly"
+    },
+    "production_request_comparison": {
+      "reference_fields_match_configured_semantics": true,
+      "additional_production_api_fields": ["area", "data_format", "download_format"],
+      "production_transfer_call": "ecmwfr::wf_request(request=c(list(dataset_short_name=...), payload), transfer=TRUE, path=dirname(target_path))",
+      "production_retry_policy": "Transient errors only; HTTP 401 is not retried",
+      "scientific_or_request_changes_made": false
+    },
+    "ecmwfr": {
+      "version": "2.0.3",
+      "credential_source": "secrets.yaml fallback loaded into ecmwfr_PAT",
+      "ecmwfr_PAT_present_before_loader": false,
+      "ecmwfr_PAT_present_after_loader": true,
+      "credential_value_displayed_logged_copied_or_committed": false,
+      "key_precedence": "ecmwfr_PAT environment variable before ecmwfr keyring",
+      "submission_authentication_header": "PRIVATE-TOKEN",
+      "dataset_catalog_get_endpoint": "https://cds.climate.copernicus.eu/api/catalogue/v1/collections/",
+      "task_submission_endpoint_pattern": "https://cds.climate.copernicus.eu/api/retrieve/v1/processes/{dataset_short_name}/execute",
+      "catalog_error_handling": "wf_datasets() maps HTTP errors to Server not reachable; guess_service() then emits a generic dataset-not-found or credential-mismatch error"
+    },
+    "bounded_r_reproduction": {
+      "request_constructed": true,
+      "wf_request_invoked": true,
+      "timeout_seconds": 300,
+      "output_location": "isolated temporary scratch, removed after the call",
+      "status": "ERROR_DIAGNOSTIC_CAPTURE_INCOMPLETE",
+      "http_status": null,
+      "response_endpoint": null,
+      "submission_attempted": "undetermined",
+      "request_accepted": "undetermined",
+      "observed_dates": [],
+      "returned_variables": [],
+      "capture_issue": "The wrapper's sanitizer helper was missing from the existing scratch source copy after wf_request returned an error; the underlying message, status, and call stack were not persisted. No live retry was made."
+    },
+    "service_resolution_precheck": {
+      "status": "ERROR_BEFORE_SUBMISSION",
+      "error_class": "simpleError;error;condition",
+      "request_submission_attempted": false,
+      "http_status": null,
+      "detail": "The precheck returned a generic ecmwfr dataset/service resolution error; ecmwfr source inspection shows the underlying catalogue HTTP error status is discarded."
+    },
+    "previous_standalone_http_401_evidence_remains_current": true,
+    "root_cause_assessment": "The four earlier HTTP 401 task-submission responses remain consistent with authentication or authorization rejection. The successful operator Python request does not establish that Atlas used the same account credential. No request-field defect has been established; exact Atlas PAT/account authorization remains unresolved.",
+    "latest_verified_endpoint_by_source": {
+      "era5_mintemp": null,
+      "era5_soilmoist": null,
+      "era5_lai_low": null,
+      "agera5_relhum_min": null,
+      "era5land_daily_mean_utc06": "2026-11-05"
+    },
+    "verified_common_endpoint": null,
+    "focused_test_result": {
+      "context": "existing Atlas scratch checkout",
+      "passed": 53,
+      "failed": 0,
+      "warnings": 1,
+      "warning": "Temporary non-Git fixture invoked git rev-parse",
+      "production_data_modified": false
+    },
+    "decision": "UPDATE_PARTIALLY_READY",
+    "production_jobs_submitted": false,
+    "production_data_modified": false
   }
 }
