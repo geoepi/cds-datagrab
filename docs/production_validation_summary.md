@@ -1,37 +1,40 @@
 # Production validation summary
 
-This document records the current validated production portfolio conservatively. It does not treat the configured future horizon as observed data, and it does not claim any endpoint after the validated run below.
+This document records the latest validated production portfolio. Configured future dates are not treated as observed data.
 
 ## Validated portfolio production
 
-The full production portfolio completed successfully on Atlas. The stable portfolio run `20260831T181051Z_portfolio` is the current validation evidence:
+The latest successful Atlas portfolio run is `20261112T013707Z_portfolio`, requested through **2026-11-03**. Its manifest is `/project/disease_ecology/cds-datagrab-output/runs/production/_portfolio/20261112T013707Z_portfolio/portfolio_manifest.json` and records `status: success`. The run used source and installed-package commit `9a07372acec9c69d6f34859ff96ace866c25d633`.
 
 | Measure | Validated result |
 |---|---:|
 | ERA5-Land products | 8 |
 | Standalone products | 4 |
 | Portfolio products | 12 |
-| Complete ISO weeks per product | 238 |
-| Products passed sidecar, geometry, and weekly validation | 12 |
-| ERA5-Land daily TIFFs per product | 1,668 |
-| ERA5-Land daily TIFFs total | 13,344 |
-| Validated/produced endpoint | 2026-07-26 |
-| Configured horizon | 2022-01-01 through 2026-12-31 |
+| Daily observations per product | 1,768 |
+| Total daily observations | 21,216 |
+| Latest validated daily observation | 2026-11-03 |
+| Complete ISO weeks per product | 252 |
+| Latest complete ISO week | 2026-W44 (ends 2026-11-01) |
+| Products passed daily, weekly, sidecar, geometry, and portfolio validation | 12 |
+| Configured hard horizon | 2022-01-01 through 2026-12-31 |
 
-The five production source-workflow configurations now agree on `temporal.observed_end = 2026-07-26`. This is the latest operator-confirmed available/produced endpoint, not a calendar-derived forecast. The configured hard horizon remains 2026-12-31; dates after 2026-07-26 are not validated.
+All five CDS source workflows have retrieval evidence through 2026-11-03. The shared ERA5-Land source was verified through 2026-11-05 with all eight configured variables. Production configuration `temporal.observed_end` is now 2026-11-03 for all five source workflows; dates after that endpoint remain unvalidated.
 
-The eight outputs are additive to the established standalone products `era5_mintemp`, `era5_soilmoist`, `era5_lai_low`, and `agera5_relhum_min`. All ERA5-Land outputs use the shared `era5land_daily_mean_utc06` source family and one monthly `derived-era5-land-daily-statistics` request containing eight variables, with `daily_mean`, `utc-06:00`, and `1_hourly` request settings.
+From the prior 2026-10-01 daily endpoint, the update added 33 daily observations per product (396 total). The planned four fully incremental complete ISO weeks are W41–W44 (48 weekly outputs across 12 products). The completed cumulative inventory reaches W44; the W40 boundary week is also complete. Existing valid outputs were reused, no overwrite or historical rebuild was performed, and historical TIFFs remained unchanged.
+
+The portfolio dependency chain completed: five source jobs (`21203198`–`21203202`), five aggregation jobs (`21203203`–`21203207`), and validator `21203208`. All 11 jobs completed with exit code 0; the portfolio validator reported success. The source jobs reused existing verified artifacts where present. CHIME's read-only `cds-datagrab` status adapter reports the portfolio as current through 2026-11-03.
 
 ## Portfolio orchestration status
 
-Portfolio orchestration has been exercised successfully on Atlas across the full dependency chain: source workflows → weekly aggregation → portfolio validation. The operator entry point is:
+Portfolio orchestration has completed successfully on Atlas across the full dependency chain: source workflows → weekly aggregation → portfolio validation. The operator entry point remains:
 
 ```bash
 bash hpc/submit_all_products.sh --through latest-common --mode plan
 bash hpc/submit_all_products.sh --through latest-common --mode update
 ```
 
-It submits five independent source workflows concurrently, then submits dependent weekly aggregation and final synchronization validation jobs. The parent manifest under `runs/production/_portfolio/<run_id>/` records the job IDs, common endpoint, complete ISO-week count, per-product coverage, and final status. The successful run confirmed sidecars, geometry, weekly validation, and synchronized cumulative inventories for all 12 products.
+The parent manifest records the common endpoint, job IDs, dependency strings, per-product expected/present/missing counts, complete-week count, and final status. A submitted job is not success: only successful source and aggregation work followed by successful final validation establishes a completed portfolio.
 
 ## Restart and recovery validation
 

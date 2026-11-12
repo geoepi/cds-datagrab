@@ -36,7 +36,7 @@ Use `/project/disease_ecology/cds-datagrab-output` for production and `/project/
 | `agera5_relhum_min` | one standalone product | `config/agera5_relhum_min_production.yml` | `hpc/submit_agera5_relhum_min.sh` | 365/366 dates, 12 requests |
 | `era5land_daily_mean_utc06` | all eight ERA5-Land products | `config/era5land_daily_mean_utc06_production.yml` | `hpc/submit_era5land_daily_mean.sh` | 365/366 dates, 12 source requests |
 
-The ERA5-Land row is one shared eight-product source family, not eight independent CDS request streams. A full 2022–2026 configured horizon contains 55 monthly source requests. The current validated produced/observed endpoint is 2026-07-26; the configured hard horizon still ends 2026-12-31.
+The ERA5-Land row is one shared eight-product source family, not eight independent CDS request streams. A full 2022–2026 configured horizon contains 55 monthly source requests. The current validated produced/observed endpoint is 2026-11-03; the configured hard horizon still ends 2026-12-31. The latest successful portfolio run is 20261112T013707Z_portfolio, with 1,768 daily observations and 252 complete ISO weeks per product through ISO week 2026-W44.
 
 ## Updating all production products
 
@@ -50,7 +50,7 @@ bash hpc/submit_all_products.sh --through latest-common --mode plan
 bash hpc/submit_all_products.sh --through latest-common --mode update
 
 # Explicit common endpoint.
-bash hpc/submit_all_products.sh --through 2026-07-10 --mode update
+bash hpc/submit_all_products.sh --through 2026-11-03 --mode update
 ```
 
 The portfolio definition is `config/production_portfolio.yml`. It expands five logical source workflows to exactly 12 products. Endpoint policy is explicit:
@@ -62,7 +62,7 @@ The planner never edits `temporal.observed_end` or treats an explicit future tar
 
 The five source jobs are submitted concurrently. Each standalone job uses its existing full wrapper interface (`MODE=full DRY_RUN=false`), which plans, acquires missing source data, processes missing daily outputs, and reuses valid outputs. The ERA5-Land job uses its existing `--execute` path. Weekly aggregation is submitted only with `afterok:<all five source job IDs>` and uses the exact same common start/end dates. Four standalone aggregation jobs and one ERA5-Land aggregate-only family job then run concurrently. Portfolio validation depends on all aggregation jobs and checks synchronized daily dates, complete ISO weeks, raster geometry, sidecars/provenance, value ranges, and ERA5-Land support-mask behavior.
 
-The durable parent record is `runs/production/_portfolio/<run_id>/portfolio_manifest.json`. It records requested and resolved dates, source/installed commits, source and aggregation job IDs, dependency strings, per-product expected/present/missing counts, complete-week count, and final status. Submission status is not success: `validation_submitted` means Slurm accepted the validator but it has not been observed running; `validation_running` means the validator has started; `success` requires all source work, all aggregation work, and final validation. If a child fails or a dependent validator is cancelled, inspect the normal run manifests and Slurm logs, then use the optional reconciliation utility with the same external root. Valid TIFFs are reused; ordinary updates do not use `--overwrite`. The validated portfolio baseline is run `20260831T181051Z_portfolio`, through 2026-07-26 with 238 complete ISO weeks and 12 products.
+The durable parent record is `runs/production/_portfolio/<run_id>/portfolio_manifest.json`. It records requested and resolved dates, source/installed commits, source and aggregation job IDs, dependency strings, per-product expected/present/missing counts, complete-week count, and final status. Submission status is not success: `validation_submitted` means Slurm accepted the validator but it has not been observed running; `validation_running` means the validator has started; `success` requires all source work, all aggregation work, and final validation. If a child fails or a dependent validator is cancelled, inspect the normal run manifests and Slurm logs, then use the optional reconciliation utility with the same external root. Valid TIFFs are reused; ordinary updates do not use `--overwrite`. The latest validated portfolio is run `20261112T013707Z_portfolio`, through 2026-11-03 with 252 complete ISO weeks and 12 products.
 
 For a CHIME-triggered portfolio, the wrapper receives optional
 `CHIME_EXECUTION_ID` and persists it as the top-level
