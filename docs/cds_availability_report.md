@@ -26,7 +26,7 @@ The exact update command was `bash hpc/submit_all_products.sh --through 2026-11-
 
 - 12 products have validated daily coverage from 2022-01-01 through 2026-11-03: 1,768 expected/present per product, with no missing dates.
 - 12 products have 252 complete weekly outputs through 2026-W44 (week ending 2026-11-01), with no missing weeks.
-- The planned increment was 33 daily observations per product and four complete incremental weeks, 2026-W41–W44. The W40 boundary week is also complete in the final cumulative inventory.
+- Relative to the validated 2026-10-01 inventory (1,735 daily and 247 weekly outputs per product), the completed update added 33 daily observations and 5 weekly outputs per product (396 daily and 60 weekly outputs total). Four full incremental ISO weeks, W41–W44, were planned; W40 is the additional boundary-week output. Final coverage is 252 complete weeks per product through W44.
 - Existing valid artifacts were reused. No overwrite or historical rebuild was used; validated historical TIFFs remained unchanged.
 - Five source jobs (`21203198`–`21203202`), five aggregation jobs (`21203203`–`21203207`), and validator `21203208` all completed with exit code 0.
 

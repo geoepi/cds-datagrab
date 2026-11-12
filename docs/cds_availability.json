@@ -383,7 +383,13 @@
     "cumulative_daily_outputs_per_product": 1768,
     "cumulative_weekly_outputs_per_product": 252,
     "incremental_daily_outputs_per_product": 33,
-    "incremental_complete_iso_weeks_per_product": 4
+    "incremental_complete_iso_weeks_per_product": 4,
+    "planned_incremental_complete_iso_weeks_per_product": 4,
+    "actual_incremental_weekly_outputs_per_product": 5,
+    "actual_incremental_weekly_outputs_total": 60,
+    "actual_incremental_daily_outputs_per_product": 33,
+    "actual_incremental_daily_outputs_total": 396,
+    "boundary_week_output": "2026-W40"
   },
   "production_inventory": {
     "root": "/project/disease_ecology/cds-datagrab-output",
@@ -434,7 +440,13 @@
       "failed_era5land_source_job_id": "21202754",
       "recovery_process_job_id": "21203060",
       "recovery_status": "COMPLETED with exit code 0; local cached archives only; no CDS contact"
-    }
+    },
+    "incremental_daily_outputs_per_product": 33,
+    "incremental_daily_outputs_total": 396,
+    "planned_incremental_complete_weeks_per_product": 4,
+    "incremental_weekly_outputs_per_product": 5,
+    "incremental_weekly_outputs_total": 60,
+    "boundary_week_output": "2026-W40"
   },
   "product_update_plan": [
     {
@@ -457,7 +469,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5_soilmoist",
@@ -479,7 +496,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5_lai_low",
@@ -501,7 +523,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "agera5_relhum_min",
@@ -523,7 +550,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5land_tmean",
@@ -545,7 +577,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5land_soiltemp_l1_mean",
@@ -567,7 +604,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5land_soiltemp_l2_mean",
@@ -589,7 +631,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5land_soilwater_l1_mean",
@@ -611,7 +658,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5land_soilwater_l2_mean",
@@ -633,7 +685,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5land_surface_pressure_mean",
@@ -655,7 +712,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5land_lai_high_mean",
@@ -677,7 +739,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     },
     {
       "product_id": "era5land_lai_low_mean",
@@ -699,7 +766,12 @@
       "execution_status": "COMPLETED_AND_VALIDATED",
       "portfolio_run_id": "20261112T013707Z_portfolio",
       "final_validated_daily_per_product": 1768,
-      "final_validated_weekly_per_product": 252
+      "final_validated_weekly_per_product": 252,
+      "actual_incremental_daily_outputs_per_product": 33,
+      "actual_incremental_weekly_outputs_per_product": 5,
+      "actual_incremental_weekly_outputs_total": 60,
+      "planned_full_incremental_iso_weeks": 4,
+      "additional_boundary_week": "2026-W40"
     }
   ],
   "source_archives": [
@@ -788,7 +860,7 @@
   },
   "decision": {
     "status": "UPDATE_READY",
-    "reason": "All five CDS source workflows were retrieval-verified through the common endpoint 2026-11-03 (ERA5-Land through 2026-11-05, all eight variables). Portfolio run 20261112T013707Z_portfolio completed and validated all 12 products through 2026-11-03 with 1,768 daily outputs and 252 complete ISO weeks per product, no gaps, and no historical TIFF rewrites.",
+    "reason": "All five CDS source workflows were retrieval-verified through the common endpoint 2026-11-03 (ERA5-Land through 2026-11-05, all eight variables). Portfolio run 20261112T013707Z_portfolio completed and validated all 12 products through 2026-11-03 with 1,768 daily outputs and 252 complete ISO weeks per product, no gaps, and no historical TIFF rewrites. Actual inventory increased by 5 weekly outputs per product (60 total): the four fully incremental weeks W41-W44 plus boundary week W40.",
     "recommended_update_command_if_endpoint_is_later_verified": "bash hpc/submit_all_products.sh --through 2026-11-03 --mode update",
     "command_status": "COMPLETED_AND_VALIDATED",
     "production_update_or_jobs_submitted": true,

@@ -76,7 +76,7 @@ status. Standalone runs leave the field `null`.
 
 The latest successful Atlas portfolio run is `20261112T013707Z_portfolio`, validated through **2026-11-03** for all **12 products**: four standalone products and eight ERA5-Land products. All products passed daily, weekly, sidecar, geometry, and portfolio validation. Each has **1,768 daily outputs** and **252 complete ISO weeks** through **2026-W44** (ending 2026-11-01).
 
-The update added 33 daily observations per product from the prior October 1 endpoint. Four full incremental weeks (2026-W41 through W44) were planned per product; the W40 boundary week is also complete in the final inventory. Existing valid outputs were reused; no overwrite or historical rebuild was performed.
+Relative to the validated 2026-10-01 inventory (1,735 daily and 247 weekly outputs per product), the completed update added 33 daily observations and 5 weekly outputs per product (396 daily and 60 weekly outputs total). Four full incremental ISO weeks, W41–W44, were planned; W40 is the additional boundary-week output. Final coverage is 252 complete weeks per product through W44. Existing valid outputs were reused; no overwrite or historical rebuild was performed.
 
 All five production source configurations now set `temporal.observed_end` to **2026-11-03**, after retrieval evidence and successful portfolio validation. The configured hard horizon remains **2022-01-01 through 2026-12-31**; later dates are not validated.
 
