@@ -65,3 +65,172 @@ test_that("NetCDF time aliases are resolved consistently and unsupported dimensi
   expect_error(read_daily_netcdf(malformed_path, get_variable_spec("era5land_tmean"), dates, dates), "longitude, latitude, and time dimensions")
   expect_error(resolve_netcdf_coordinate_dimensions(c("longitude", "latitude", "forecast_time")), "longitude, latitude, and time dimensions")
 })
+
+make_era5land_multimonth_test_archive <- function(path) {
+  member_dir <- tempfile("era5land-month-cache-members-", tmpdir = dirname(path))
+  dir.create(member_dir, recursive = TRUE)
+  members <- paste0("member-", seq_len(8L), ".nc")
+  for (member in members) writeLines("fixture", file.path(member_dir, member))
+  old_wd <- getwd()
+  on.exit({
+    setwd(old_wd)
+    unlink(member_dir, recursive = TRUE, force = TRUE)
+  }, add = TRUE)
+  setwd(member_dir)
+  utils::zip(fs::path_abs(path), members, flags = "-q")
+  invisible(path)
+}
+
+make_era5land_multimonth_test_config <- function(dates) {
+  config_dir <- tempfile("era5land-month-boundary-config-", tmpdir = package_root())
+  dir.create(config_dir, recursive = TRUE)
+  withr::defer(unlink(config_dir, recursive = TRUE, force = TRUE),
+    envir = testthat::teardown_env())
+  cfg <- read_pipeline_config(package_file("config", "era5land_daily_mean_utc06_smoke.yml"))
+  cfg$spatial$template_path <- package_file("spatial_domain", "study_area_raster.tif")
+  cfg$spatial$bbox_path <- package_file("spatial_domain", "study_bbox.gpkg")
+  cfg$temporal$initial_start_date <- as.character(min(dates))
+  cfg$temporal$observed_end <- as.character(max(dates))
+  cfg$temporal$configured_start_date <- as.character(min(dates))
+  cfg$temporal$configured_end_date <- as.character(max(dates))
+  cfg$temporal$future_end_date <- as.character(max(dates))
+  config_path <- file.path(config_dir, "config.yml")
+  yaml::write_yaml(cfg, config_path)
+  list(path = config_path, config = cfg)
+}
+
+test_that("full mode processes every month across a boundary with partial caches", {
+  dates <- as.Date("2026-10-30") + 0:3
+  fixture <- make_era5land_multimonth_test_config(dates)
+  root <- test_external_root("era5land-multimonth-partial-cache")
+  cfg <- fixture$config
+  spatial <- diagnose_spatial_domain(cfg$spatial$template_path, cfg$spatial$bbox_path, cfg)
+  requests <- build_era5land_daily_mean_requests(dates, spatial$final_cds_area, cfg)
+  expect_length(requests, 2L)
+  expect_identical(unname(lapply(requests, function(x) as.character(x$raw_request_dates))),
+    list(as.character(dates[1:2]), as.character(dates[3:4])))
+
+  source_paths <- resolve_source_storage_paths(cfg, package_root(), root, create = TRUE)
+  first_archive <- file.path(source_paths$raw_dir,
+    paste0(tools::file_path_sans_ext(basename(requests[[1L]]$target)), ".zip"))
+  make_era5land_multimonth_test_archive(first_archive)
+
+  staged_hashes <- character()
+  retrieved_requests <- list()
+  partial_cache_checks <- list()
+  process_calls <- list()
+  local_mocked_bindings(
+    era5land_retrieve_requests = function(requests, registry, source_paths, config,
+                                          transfer_fun = NULL, ...) {
+      retrieved_requests[[length(retrieved_requests) + 1L]] <<-
+        lapply(requests, function(x) as.character(x$raw_request_dates))
+      for (request in requests) {
+        if (is.null(era5land_local_archive(request, source_paths))) {
+          archive <- file.path(source_paths$raw_dir,
+            paste0(tools::file_path_sans_ext(basename(request$target)), ".zip"))
+          make_era5land_multimonth_test_archive(archive)
+        }
+      }
+      registry <- era5land_registry_reconcile(requests, registry, source_paths, config,
+        persist = TRUE)
+      list(registry = registry, retrieved = length(requests), failed = 0L, processing = 0L)
+    },
+    era5land_request_output_completeness = function(request, product_ids, config, root) {
+      request_dates <- as.character(request$raw_request_dates)
+      cached_date <- request_dates[[1L]]
+      missing_dates <- request_dates[-1L]
+      partial_cache_checks[[length(partial_cache_checks) + 1L]] <<- list(
+        request_dates = request_dates, cached_dates = cached_date, missing_dates = missing_dates)
+      list(valid = FALSE, products = lapply(product_ids, function(id) list(
+        product_id = id, missing = missing_dates)), missing_products = product_ids)
+    },
+    era5land_product_output_completeness = function(product_id, request, config, root,
+                                                    require_provenance = TRUE) {
+      list(valid = FALSE, product_id = product_id,
+        missing = as.character(request$raw_request_dates), output_paths = character())
+    },
+    era5land_extract_archive = function(archive_path, extracted_root, request_hash,
+                                        request_dates, run_dir = NULL) {
+      ids <- .era5land_product_ids()
+      aliases <- c(era5land_tmean = "t2m", era5land_soiltemp_l1_mean = "stl1",
+        era5land_soiltemp_l2_mean = "stl2", era5land_soilwater_l1_mean = "swvl1",
+        era5land_soilwater_l2_mean = "swvl2", era5land_surface_pressure_mean = "sp",
+        era5land_lai_high_mean = "lai_hv", era5land_lai_low_mean = "lai_lv")
+      specs <- lapply(ids, get_variable_spec)
+      inventory <- data.frame(
+        request_hash = request_hash, archive_path = archive_path, archive_sha256 = "fixture",
+        member_name = paste0(ids, ".nc"), member_size = 1,
+        member_sha256 = paste0("fixture-", ids),
+        extracted_path = file.path(extracted_root, request_hash, paste0(ids, ".nc")),
+        container_type = rep("netcdf4_hdf5", length(ids)),
+        netcdf_inspection_status = rep("ok", length(ids)),
+        environmental_variable_alias = unname(aliases[ids]), product_id = ids,
+        cds_variable = vapply(specs, function(x) x$cds_variable, character(1)),
+        source_units = vapply(specs, function(x) x$source_units, character(1)),
+        dimension_names = rep("longitude;latitude;time", length(ids)),
+        dimension_lengths = rep("2;2;2", length(ids)), time_dimension = rep("time", length(ids)),
+        decoded_dates = rep(paste(as.character(request_dates), collapse = ";"), length(ids)),
+        stringsAsFactors = FALSE
+      )
+      attr(inventory, "source_map") <- data.frame()
+      attr(inventory, "extraction_reused") <- FALSE
+      inventory
+    },
+    process_downloaded_variable = function(file, daily_dir, template_path, boundary_path,
+                                           config, variable_spec, expected_dates,
+                                           request_manifest, ...) {
+      request_dates <- as.character(request_manifest[[1L]]$raw_request_dates)
+      available_dates <- intersect(as.character(expected_dates), request_dates)
+      cached_dates <- if (length(available_dates)) available_dates[[1L]] else character()
+      written_dates <- setdiff(available_dates, cached_dates)
+      process_calls[[length(process_calls) + 1L]] <<- list(
+        expected_dates = as.character(expected_dates), request_dates = request_dates,
+        cached_dates = cached_dates, written_dates = written_dates)
+      date_results <- lapply(available_dates, function(date) list(
+        date = date, status = if (date %in% cached_dates) "reused" else "success"))
+      list(written = paste0("written-", written_dates),
+        reused = paste0("cached-", cached_dates), replaced = character(), failed = character(),
+        processing_failures = list(), date_results = date_results, coverage_summary = list())
+    },
+    era5land_annotate_product_metadata = function(...) character(),
+    .package = "cdsdatagrab"
+  )
+
+  result <- run_era5land_daily_mean_family(
+    fixture$path, mode = "full", dry_run = FALSE,
+    start_date = min(dates), end_date = max(dates), output_root = root,
+    product_ids = "era5land_tmean",
+    stage_fun = function(request, payload) {
+      staged_hashes <<- c(staged_hashes, request$request_hash)
+      list(job_id = paste0("fixture-", request$request_hash),
+        job_url = paste0("https://cds.invalid/jobs/", request$request_hash))
+    },
+    transfer_fun = function(...) stop("unexpected live transfer in cached test")
+  )
+
+  expect_identical(result$status, "success")
+  expect_length(result$requests, 2L)
+  expect_length(result$request_results, 2L)
+  expect_identical(staged_hashes, requests[[2L]]$request_hash)
+  expect_length(retrieved_requests, 1L)
+  expect_identical(retrieved_requests[[1L]],
+    lapply(requests, function(x) as.character(x$raw_request_dates)))
+  expect_identical(lapply(partial_cache_checks, `[[`, "missing_dates"),
+    list(as.character(dates[2L]), as.character(dates[4L])))
+  expect_identical(lapply(process_calls, `[[`, "expected_dates"),
+    unname(lapply(requests, function(x) as.character(x$raw_request_dates))))
+  expect_identical(lapply(process_calls, `[[`, "cached_dates"),
+    list(as.character(dates[1L]), as.character(dates[3L])))
+  expect_identical(lapply(process_calls, `[[`, "written_dates"),
+    list(as.character(dates[2L]), as.character(dates[4L])))
+  expect_true(all(vapply(result$request_results, function(x) identical(x$status, "success"),
+    logical(1))))
+  expect_equal(vapply(result$request_results, function(x) x$manifest$daily_outputs_written,
+    numeric(1)), c(1, 1))
+  expect_equal(vapply(result$request_results, function(x) x$manifest$daily_outputs_reused,
+    numeric(1)), c(1, 1))
+  successful_dates <- unlist(lapply(result$request_results, function(x) {
+    x$products[["era5land_tmean"]]$successful_dates
+  }), use.names = FALSE)
+  expect_setequal(successful_dates, as.character(dates))
+})
