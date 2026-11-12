@@ -21,7 +21,7 @@ The latest successful Atlas portfolio run is `20261112T013707Z_portfolio`, reque
 
 All five CDS source workflows have retrieval evidence through 2026-11-03. The shared ERA5-Land source was verified through 2026-11-05 with all eight configured variables. Production configuration `temporal.observed_end` is now 2026-11-03 for all five source workflows; dates after that endpoint remain unvalidated.
 
-From the prior 2026-10-01 daily endpoint, the update added 33 daily observations per product (396 total). The planned four fully incremental complete ISO weeks are W41–W44 (48 weekly outputs across 12 products). The completed cumulative inventory reaches W44; the W40 boundary week is also complete. Existing valid outputs were reused, no overwrite or historical rebuild was performed, and historical TIFFs remained unchanged.
+Relative to the validated 2026-10-01 inventory (1,735 daily and 247 weekly outputs per product), the completed update added 33 daily observations and 5 weekly outputs per product (396 daily and 60 weekly outputs total). Four full incremental ISO weeks, W41–W44, were planned; W40 is the additional boundary-week output. Final coverage is 252 complete weeks per product through W44. Existing valid outputs were reused, no overwrite or historical rebuild was performed, and historical TIFFs remained unchanged.
 
 The portfolio dependency chain completed: five source jobs (`21203198`–`21203202`), five aggregation jobs (`21203203`–`21203207`), and validator `21203208`. All 11 jobs completed with exit code 0; the portfolio validator reported success. The source jobs reused existing verified artifacts where present. CHIME's read-only `cds-datagrab` status adapter reports the portfolio as current through 2026-11-03.
 
