@@ -107,7 +107,7 @@ test_that("full mode processes every month across a boundary with partial caches
   spatial <- diagnose_spatial_domain(cfg$spatial$template_path, cfg$spatial$bbox_path, cfg)
   requests <- build_era5land_daily_mean_requests(dates, spatial$final_cds_area, cfg)
   expect_length(requests, 2L)
-  expect_identical(lapply(requests, function(x) as.character(x$raw_request_dates)),
+  expect_identical(unname(lapply(requests, function(x) as.character(x$raw_request_dates))),
     list(as.character(dates[1:2]), as.character(dates[3:4])))
 
   source_paths <- resolve_source_storage_paths(cfg, package_root(), root, create = TRUE)
@@ -218,7 +218,7 @@ test_that("full mode processes every month across a boundary with partial caches
   expect_identical(lapply(partial_cache_checks, `[[`, "missing_dates"),
     list(as.character(dates[2L]), as.character(dates[4L])))
   expect_identical(lapply(process_calls, `[[`, "expected_dates"),
-    lapply(requests, function(x) as.character(x$raw_request_dates)))
+    unname(lapply(requests, function(x) as.character(x$raw_request_dates))))
   expect_identical(lapply(process_calls, `[[`, "cached_dates"),
     list(as.character(dates[1L]), as.character(dates[3L])))
   expect_identical(lapply(process_calls, `[[`, "written_dates"),
