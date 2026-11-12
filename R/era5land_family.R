@@ -506,7 +506,7 @@ run_era5land_daily_mean_family <- function(config_path = "config/era5land_daily_
     inventory <- era5land_request_inventory(requests, retrieved$registry, source_paths)
     if (length(staged$failures) || retrieved$failed > 0L) return(list(status = "execute_failed", run_id = run_id, run_dir = run_dir, requests = requests, source_paths = source_paths, request_registry = retrieved$registry, request_inventory = inventory, staged = staged, retrieval = retrieved))
     if (inventory$new_cds_requests_required > 0L || inventory$registered_pending_cds_jobs > 0L) return(list(status = "execute_pending", run_id = run_id, run_dir = run_dir, requests = requests, source_paths = source_paths, request_registry = retrieved$registry, request_inventory = inventory, staged = staged, retrieval = retrieved))
-    return(run_era5land_daily_mean_family(config_path = config_path, mode = "process", dry_run = FALSE, start_date = start_date, end_date = end_date, output_root = output_root, product_ids = product_ids, overwrite = overwrite, rebuild_all_weeks = rebuild_all_weeks, transfer_fun = transfer_fun, stage_fun = stage_fun, status_fun = status_fun, internal_call = TRUE))
+    return(run_era5land_daily_mean_family(config_path = config_path, mode = "process", dry_run = FALSE, start_date = start_date, end_date = end_date, output_root = output_root, product_ids = product_ids, overwrite = overwrite, rebuild_all_weeks = rebuild_all_weeks, transfer_fun = transfer_fun, stage_fun = stage_fun, status_fun = status_fun))
   }
 
   if (mode %in% c("process", "aggregate") && !internal_call && length(requests) > 1L) {
